@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 380" width="640" height="380" font-family="Helvetica,Arial,sans-serif">
+<rect width="640" height="380" fill="#f1f1f1"/>
+<rect x="20" y="16" width="600" height="348" fill="#fff" stroke="#000"/>
+<text x="40" y="52" font-size="22" font-weight="700">Your details</text>
+<line x1="40" y1="62" x2="600" y2="62" stroke="#000" stroke-width="2"/>
+<text x="40" y="90" font-size="14" font-weight="700">Name</text>
+<rect x="40" y="98" width="560" height="38" rx="3" fill="#fff" stroke="#8c8c8c"/>
+<text x="40" y="162" font-size="14" font-weight="700">Phone number</text>
+<rect x="40" y="170" width="560" height="38" rx="3" fill="#fff" stroke="#8c8c8c"/>
+<rect x="41" y="226" width="20" height="20" rx="3" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<g font-size="13" fill="#666">
+<text x="74" y="241"><tspan fill="#000" font-weight="700">Yes, text me about this order</tspan> (optional). Baklava Story will text this</text>
+<text x="74" y="259">number an order confirmation and a ready-for-pickup message, up to 3 texts</text>
+<text x="74" y="277">per order. Message and data rates may apply. Reply STOP to opt out or HELP</text>
+<text x="74" y="295">for help. You can order without agreeing.</text>
+<text x="74" y="317">See our <tspan fill="#000" font-weight="700" text-decoration="underline">Terms</tspan> and <tspan fill="#000" font-weight="700" text-decoration="underline">Privacy Policy</tspan>.</text>
+</g>
+<text x="40" y="350" font-size="12" fill="#666">Customer order form, baklava-story.vercel.app (box is unticked by default)</text>
+</svg>
