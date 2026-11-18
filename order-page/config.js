@@ -12,7 +12,7 @@
       order-page/config.js and dashboard/config.js
    ===================================================================== */
 
-window.BS_TEST_API_URL = ''; // <-- paste the TEST web app URL here
+window.BS_TEST_API_URL = 'https://script.google.com/macros/s/AKfycbxbRry9SMes2KOd6ieMA8oN1FA1LNApknUk_0ODq_8H6Em-zspH7jZ674bXpZ4e88t4Dg/exec'; // <-- paste the TEST web app URL here
 
 /* ---- Safety guard: do not edit below this line ---------------------- */
 (function () {

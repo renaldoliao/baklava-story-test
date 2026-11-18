@@ -16,6 +16,13 @@ When a change is tested and approved here, it gets copied to the live system by 
 
 ## What changed in v2 (latest first)
 
+### v2.0.1 — Nov 19, 2026: connected to the test backend
+- The TEST Sheet's script is now online as a web app. Its address is filled
+  into `order-page/config.js` and `dashboard/config.js`.
+- Checked: the test backend answers and returns the six trays from the TEST Sheet.
+- Texts are in test mode (`TEXT_MODE` = `test` in Script Properties), so no
+  real texts are sent.
+
 ### v2.0 — Nov 18, 2026: test copy set up
 - **Points at the test backend, not the live one.** The live backend address was
   removed from `order-page/index.html` and `dashboard/j1.js`. Both now read the
