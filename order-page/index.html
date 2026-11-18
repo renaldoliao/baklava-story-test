@@ -94,6 +94,7 @@ html{-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-t
 .slip .when{display:inline-block;background:var(--ink);color:var(--paper);font:600 17px/1.5 var(--f-ui);padding:1px 8px;margin-bottom:6px}
 .link{color:inherit;text-decoration:underline;text-underline-offset:3px;font-weight:600}
 footer{margin:18px 2px 0;color:var(--ink2);font-size:13px}
+.callus{margin-top:4px}.callus a{white-space:nowrap}
 footer .flinks{display:block;margin-top:2px}footer .flinks a{display:inline-block;padding:13px 22px 13px 0}
 .optin .links a{display:inline-block;padding:11px 6px;margin:-11px -6px}
 .slip .tot{display:block;margin-top:8px;font-weight:700}
@@ -101,7 +102,8 @@ footer .flinks{display:block;margin-top:2px}footer .flinks a{display:inline-bloc
 <div class="page">
 <header>
 <h1 class="mark">Baklava Story</h1>
-<p>Order for pickup at 1830 Harrison St, Ste B, San Francisco. Pay when you pick up.</p>
+<p>Order for pickup at 1830 Harrison St, Ste B, San Francisco, CA 94103. Pay when you pick up.</p>
+<p class="callus">Questions? Call or text us at <a class="link" href="tel:+14157667929">(415) 766-7929</a>.</p>
 </header>
 
 <form class="sheet" id="f" autocomplete="on" novalidate>
@@ -136,7 +138,7 @@ footer .flinks{display:block;margin-top:2px}footer .flinks a{display:inline-bloc
 
 <button class="send" type="submit" id="send">Place order</button>
 <p class="err" id="err" role="alert" hidden></p>
-<p class="fine">Your order is confirmed once we approve it. To change an order, message us on Instagram @baklava.story.</p>
+<p class="fine">Your order is confirmed once we approve it. To change an order, call or text us at <a class="link" href="tel:+14157667929">(415) 766-7929</a>, or message us on Instagram @baklava.story.</p>
 </form>
 
 <section class="sheet done" id="done" hidden aria-live="polite"></section>
@@ -312,8 +314,8 @@ var items=mergedLines().map(function(l){return esc(l.qty+' x '+findProd(l.code).
 $('#f').hidden=true;
 var d=$('#done');d.hidden=false;
 d.innerHTML='<h2>We got your order</h2><div class="slip"><span class="when num">'+fmtLong(o.date)+', '+fmtT(o.time)+'</span><br><b>'+esc(o.name)+'</b><br>'+items+(o.note?'<br><i>'+esc(o.note)+'</i>':'')+'<span class="tot num">'+money(mergedLines().reduce(function(t,l){return t+findProd(l.code).price*l.qty},0))+' due when you pick up</span></div>'
-+'<p>'+(o.optin?'We will check it and text you a confirmation shortly. ':'We will check it shortly. ')+'Pickup is at 1830 Harrison St, Ste B, pay when you collect.</p>'
-+'<p class="fine">To change or cancel, message us on Instagram @baklava.story.</p>'
++'<p>'+(o.optin?'We will check it and text you a confirmation shortly. ':'We will check it shortly. ')+'Pickup is at 1830 Harrison St, Ste B, San Francisco, CA 94103. Pay when you collect.</p>'
++'<p class="fine">To change or cancel, call or text us at <a class=\"link\" href=\"tel:+14157667929\">(415) 766-7929</a>, or message us on Instagram @baklava.story.</p>'
 +'<p style="margin-top:18px"><button type="button" class="link" id="again">Place another order</button></p>';
 window.scrollTo(0,0);
 $('#again').addEventListener('click',function(){

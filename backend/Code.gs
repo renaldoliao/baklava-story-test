@@ -13,8 +13,10 @@ function testGuard_() {
 // Extensions > Apps Script, paste this whole file, Save, then Deploy > Manage deployments >
 // pencil icon > Version: New version > Deploy. The web app URL stays the same.
 const SHEET = 'Orders';
-const COLS = ['id', 'date', 'time', 'name', 'phone', 'items', 'note', 'paid', 'status', 'sample', 'source', 'seen', 'optin', 'ready'];
+const COLS = ['id', 'date', 'time', 'name', 'phone', 'items', 'note', 'paid', 'status', 'sample', 'source', 'seen', 'optin', 'ready', 'prices'];
+// v2.1: 'prices' keeps each item's price at the time of the order, so a later price change does not rewrite past sales.
 const SLOT_CAP = 3, DAY_CAP = 400, MAX_DAYS_AHEAD = 45, MIN_LEAD_MIN = 120, MAX_PER_HOUR = 40;
+const PHONE_PER_HOUR = 5, MAX_PENDING_PER_PHONE = 3;   // v2.1: spam limits per phone number
 const SHOP_TZ = 'America/Los_Angeles';
 
 // Products live in the Products tab of this sheet and are edited from the dashboard's Products tab.
@@ -29,7 +31,7 @@ const DEFAULT_PRODUCTS = [
 ];
 let PM_ = null;
 
-const ADDRESS = '1830 Harrison St, Ste B'; // confirmed with the owner Nov 16
+const ADDRESS = '1830 Harrison St, Ste B, San Francisco, CA 94103'; // v2.1: full address with city and zip (Tolgay, Nov 18)
 
 function sheet_() {
   const ss = SpreadsheetApp.getActive();
@@ -93,7 +95,7 @@ function prodSheet_() {
     sh = ss.insertSheet(PROD_SHEET);
     sh.getRange(1, 1, 1, PCOLS.length).setValues([PCOLS]).setFontWeight('bold').setBackground('#000000').setFontColor('#ffffff');
     sh.setFrozenRows(1);
-    sh.getRange(2, 1, DEFAULT_PRODUCTS.length, PCOLS.length).setValues(DEFAULT_PRODUCTS.map(function (d) { return [d[0], d[1], d[2], d[3], 'yes', '', '', '']; }));
+    sh.getRange(2, 1, DEFAULT_PRODUCTS.length, PCOLS.length).setValues(DEFAULT_PRODUCTS.map(function (d) { return [d[0], d[1], d[2], d[3], 'yes', '', '', String(d[0]).toLowerCase()]; }));
     [150, 260, 70, 70, 60, 60, 90, 80].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
   } else {
     for (let c = 0; c < PCOLS.length; c++) {
@@ -576,6 +578,10 @@ function slotList_() {
   a.push('17:45');
   return a;
 }
+// v2.1: format a yyyy-MM-dd pickup date as a San Francisco calendar day, whatever time zone the script runs in.
+function shopDay_(ymd, fmt) {
+  return Utilities.formatDate(Utilities.parseDate(String(ymd).slice(0, 10) + ' 12:00', SHOP_TZ, 'yyyy-MM-dd HH:mm'), SHOP_TZ, fmt);
+}
 function dayOfWeek_(ymd) {
   const p = ymd.split('-').map(Number);
   return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay();
@@ -609,7 +615,10 @@ function intake_(b) {
   const note = String(b.note || '').replace(/^[=+\-@\s]+/, '').trim().slice(0, 200);
   const date = String(b.date || ''), time = String(b.time || '');
   const items = parseItems_(b.items);
+  // v2.1: each line must be 1 to 20, the same as the order page (before, 0 became 1 and 401 became 99 without a word).
+  const badQty = String(b.items || '').split(/[,;\n]+/).some(function (part) { const m = part.trim().match(/^(-?\d+)\s*x/i); return m && (+m[1] < 1 || +m[1] > 20); });
   if (!name) return { error: 'Add your name.' };
+  if (badQty) return { error: 'Each item can be 1 to 20. For a bigger order, please message us.' };
   if (!phoneOk_(phoneRaw)) return { error: 'Enter a US number like (415) 555-0199. For a number outside the US, start with + and the country code.' };
   if (!items || items.length > 12) return { error: 'Pick at least one item.' };
   if (items.some(function (i) { const p = prodOf_(i.code); return !p.on || p.gone; })) return { error: 'One of those items is not available any more. The list has been refreshed, please pick again.', reload: true };
@@ -628,6 +637,10 @@ function intake_(b) {
   const hour = 'intake_' + Utilities.formatDate(new Date(), 'UTC', 'yyyyMMddHH');
   const n = +(cache.get(hour) || 0);
   if (n >= MAX_PER_HOUR) return { error: 'We are getting a lot of orders right now. Please try again in a bit.' };
+  // v2.1: one phone number can place at most PHONE_PER_HOUR online orders an hour, so one person cannot use up the shop-wide limit.
+  const pkey = 'intake_p_' + rawDigits_(phone).slice(-10) + '_' + Utilities.formatDate(new Date(), 'UTC', 'yyyyMMddHH');
+  const pn = +(cache.get(pkey) || 0);
+  if (pn >= PHONE_PER_HOUR) return { error: 'That number has placed a lot of orders in the last hour. Please message us if you need more.' };
 
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -636,19 +649,23 @@ function intake_(b) {
     const itemsText = items.map(function (i) { return i.qty + 'x' + i.code; }).join(', ');
     const same = rows.filter(function (r) { return r.date === date && r.time === time && r.phone === phone && r.items === itemsText; })[0];
     if (same) return { ok: true, id: same.id, date: date, time: time };   // double tap
+    // v2.1: at most MAX_PENDING_PER_PHONE orders waiting to be confirmed per phone number, so fake orders cannot fill a day.
+    const waiting = rows.filter(function (r) { return String(r.status).toLowerCase() === 'pending' && r.date >= now.date && rawDigits_(r.phone).slice(-10) === rawDigits_(phone).slice(-10); }).length;
+    if (waiting >= MAX_PENDING_PER_PHONE) return { error: 'You already have ' + waiting + ' orders waiting for us to confirm. Please wait for those, or message us.' };
     const atSlot = rows.filter(function (r) { return r.date === date && r.time === time; }).length;
     if (atSlot >= SLOT_CAP) return { error: 'That time just filled up. Pick another.', full: true };
     let dayPc = 0;
     rows.forEach(function (r) { if (r.date === date) { const it = parseItems_(r.items); if (it) dayPc += pieces_(it); } });
     if (dayPc + pc > DAY_CAP) return { error: 'That day is full. Pick another day.', full: true };
     const id = 'w' + Utilities.getUuid().replace(/-/g, '').slice(0, 9);
-    const row = { id: id, date: date, time: time, name: name, phone: phone, items: itemsText, note: note, paid: 'none', status: 'pending', sample: '', source: 'web', seen: '', optin: b.optin === true ? 'yes' : '', ready: '' };
+    const row = { id: id, date: date, time: time, name: name, phone: phone, items: itemsText, note: note, paid: 'none', status: 'pending', sample: '', source: 'web', seen: '', prices: priceSnap_(items, ''), optin: b.optin === true ? 'yes' : '', ready: '' };
     const sh = sheet_();
     const r = sh.getLastRow() + 1;
     const rng = sh.getRange(r, 1, 1, COLS.length);
     rng.setNumberFormat('@');
     rng.setValues([COLS.map(function (c) { return row[c]; })]);
     cache.put(hour, String(n + 1), 3600);
+    cache.put(pkey, String(pn + 1), 3600);
     safeRebuild_();
     // No text yet: the order waits on the dashboard until the owner confirms it. The text goes out then, and only if the customer ticked the opt-in box.
     return { ok: true, id: id, date: date, time: time };
@@ -820,7 +837,7 @@ function textFor_(row, kind) {
   const vars = {
     name: String(row.name).trim().split(' ')[0],
     items: items.map(function (i) { return i.qty + ' x ' + prodOf_(i.code).name; }).join(', '),
-    day: Utilities.formatDate(new Date(row.date + 'T12:00:00'), SHOP_TZ, 'EEEE, MMMM d'),
+    day: shopDay_(row.date, 'EEEE, MMMM d'),   // v2.1: was a day early when the script's time zone was not San Francisco
     time: fmtTime_(row.time),
     address: ADDRESS,
     noteline: row.note ? ' Noted: ' + row.note + '.' : ''
@@ -1046,7 +1063,7 @@ function invoiceHtml_(id) {
   if (!o) return null;
   const p = readTab_(PARTNER_SHEET, PTCOLS).filter(function (x) { return x.id === o.partner; })[0] || { name: '(partner removed)' };
   const unit = parseJson_(o.prices), items = parseItems_(o.items) || [];
-  const day = Utilities.formatDate(new Date(o.date + 'T12:00:00'), SHOP_TZ, 'MMMM d, yyyy');
+  const day = shopDay_(o.date, 'MMMM d, yyyy');
   const rows = items.map(function (i) {
     const c = String(i.code).toUpperCase(), u = Number(unit[c]) || 0;
     return '<tr><td>' + escH_(prodOf_(c).name) + '</td><td class="n">' + i.qty + '</td><td class="n">' + money_(u) + '</td><td class="n">' + money_(u * i.qty) + '</td></tr>';
@@ -1136,13 +1153,24 @@ function refreshReports() { rebuild_(); }
 
 function shortDate_(ymd) { const p = ymd.split('-'); return MON3[+p[1] - 1] + ' ' + (+p[2]); }
 function mondayOfYmd_(ymd) { return addDaysYmd_(ymd, -((dayOfWeek_(ymd) + 6) % 7)); }
-function price_(items) { return items.reduce(function (s, i) { return s + prodOf_(i.code).price * i.qty; }, 0); }
+function price_(items, snap) {
+  const p = snapOf_(snap);
+  return items.reduce(function (s, i) { const c = String(i.code).toUpperCase(); return s + (p[c] != null ? +p[c] : prodOf_(i.code).price) * i.qty; }, 0);
+}
+// v2.1: price snapshots. snapOf_ reads the prices cell, priceSnap_ adds today's price for any item not in it yet.
+function snapOf_(v) { try { const o = JSON.parse(String(v || '{}')); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
+function priceSnap_(items, oldSnap) {
+  const p = snapOf_(oldSnap);
+  (items || []).forEach(function (i) { const c = String(i.code).toUpperCase(); if (p[c] == null) p[c] = +prodOf_(c).price || 0; });
+  return JSON.stringify(p);
+}
 
 function loadOrders_() {
-  return read_().filter(function (r) { return r.source !== 'partner'; }).map(function (r) {
+  // v2.1: orders still waiting to be confirmed are not counted in the reports.
+  return read_().filter(function (r) { return r.source !== 'partner' && String(r.status).toLowerCase() !== 'pending'; }).map(function (r) {
     const items = parseItems_(r.items) || [];
     return { id: r.id, date: r.date, time: r.time, name: r.name, phone: r.phone, items: items, status: r.status, source: r.source,
-      pcs: pieces_(items), rev: price_(items) };
+      pcs: pieces_(items), rev: price_(items, r.prices) };
   });
 }
 function agg_(list) {
@@ -1255,7 +1283,7 @@ function rebuild_() {
     return [shortDate_(g.k) + ' to ' + shortDate_(addDaysYmd_(g.k, 5)) + (g.k === thisWeek ? ' (this week)' : ''), g.a.n, g.a.pcs, g.a.rev];
   });
   row = table_(sh, row, 'By week, Monday to Saturday', ['Week', 'Orders', 'Pieces', 'Booked'], weeks, ['@', '#,##0', '#,##0', '$#,##0']);
-  sh.getRange(row, 1).setValue('Booked uses the current prices in the Products tab.').setFontColor('#666666');
+  sh.getRange(row, 1).setValue('Booked uses the price at the time of each order. Orders waiting to be confirmed are not counted.').setFontColor('#666666');
 
   // ---- Breakdown
   sh = freshSheet_('Breakdown', [210, 90, 90, 100]);
@@ -1301,6 +1329,76 @@ function rebuildIfDirty_() {
   try { rebuild_(); c.remove('reportsDirty'); c.put('rebuiltRecently', '1', 60); } catch (e) { }
 }
 
+// ---------------------------------------------------------------------------------------------
+// v2.1 Rewards: a stamp card per phone number.
+// Every picked-up order earns 1 stamp automatically (counted from the Orders tab).
+// Staff add extra stamps by hand on the dashboard, for example for a coffee bought at the counter.
+// When a card reaches REWARD_GOAL stamps, staff can give the reward and the card starts again.
+// The goal and the reward wording can be changed in Script Properties: REWARD_GOAL and REWARD_TEXT.
+// ---------------------------------------------------------------------------------------------
+const REWARD_SHEET = 'Rewards';
+const RCOLS = ['logged', 'phone', 'name', 'kind', 'count', 'note', 'by'];
+function rewardCfg_() {
+  const p = PropertiesService.getScriptProperties();
+  const g = Math.round(+p.getProperty('REWARD_GOAL') || 10);
+  return { goal: g >= 2 && g <= 50 ? g : 10, text: p.getProperty('REWARD_TEXT') || 'A free small tray or a free coffee' };
+}
+function rewardSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(REWARD_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(REWARD_SHEET);
+    sh.getRange(1, 1, 1, RCOLS.length).setValues([RCOLS]).setFontWeight('bold').setBackground('#000000').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+    sh.getRange('A:G').setNumberFormat('@');
+  }
+  return sh;
+}
+function rkey_(phone) { const d = rawDigits_(phone); return d.length === 11 && d.charAt(0) === '1' ? d.slice(1) : d; }
+function rewardsData_() {
+  const cfg = rewardCfg_(), cards = {};
+  const card = function (k, name, phone) {
+    if (!cards[k]) cards[k] = { key: k, name: '', phone: phone || '', orders: 0, extra: 0, used: 0, last: '' };
+    if (name && !cards[k].name) cards[k].name = String(name).trim();
+    if (phone && !cards[k].phone) cards[k].phone = phone;
+    return cards[k];
+  };
+  read_().forEach(function (r) {
+    if (r.source === 'partner' || String(r.status).toLowerCase() !== 'picked') return;
+    const k = rkey_(r.phone); if (k.length < 7) return;
+    const c = card(k, r.name, r.phone); c.orders++; if (r.date > c.last) c.last = r.date;
+  });
+  const sh = rewardSheet_(), n = sh.getLastRow() - 1;
+  if (n > 0) sh.getRange(2, 1, n, RCOLS.length).getDisplayValues().forEach(function (v) {
+    const k = rkey_(v[1]); if (k.length < 7) return;
+    const c = card(k, v[2], v[1]), cnt = Math.max(0, Math.round(+v[4] || 0));
+    if (v[3] === 'redeem') c.used += cnt; else c.extra += cnt;
+    const d = String(v[0]).slice(0, 10); if (d > c.last) c.last = d;
+  });
+  const list = Object.keys(cards).map(function (k) {
+    const c = cards[k], total = c.orders + c.extra, left = Math.max(0, total - c.used * cfg.goal);
+    c.stamps = left; c.ready = Math.floor(left / cfg.goal); return c;
+  }).sort(function (a, b) { return b.stamps - a.stamps || (b.last > a.last ? 1 : -1); });
+  return { goal: cfg.goal, text: cfg.text, cards: list };
+}
+function rewardAction_(who, b) {
+  const phone = String(b.phone || '').trim(), k = rkey_(phone);
+  if (!phoneOk_(phone) || k.length < 7) return { error: 'Enter the customer’s phone number.' };
+  const name = String(b.name || '').replace(/^[=+\-@\s]+/, '').trim().slice(0, 60);
+  const note = String(b.note || '').replace(/^[=+\-@\s]+/, '').trim().slice(0, 80);
+  const sh = rewardSheet_(), stamp = Utilities.formatDate(new Date(), SHOP_TZ, 'yyyy-MM-dd HH:mm');
+  if (b.action === 'stamp') {
+    const cnt = Math.round(+b.count || 1);
+    if (cnt < 1 || cnt > 5) return { error: 'Add 1 to 5 stamps at a time.' };
+    sh.appendRow([stamp, fmtPhone_(phone), name, 'stamp', String(cnt), note || 'Added by hand', who]);
+  } else {
+    const cur = rewardsData_().cards.filter(function (c) { return c.key === k; })[0];
+    if (!cur || cur.ready < 1) return { error: 'This card does not have a reward yet.' };
+    sh.appendRow([stamp, fmtPhone_(phone), name || cur.name, 'redeem', '1', note || 'Reward given', who]);
+  }
+  return Object.assign({ ok: true }, rewardsData_());
+}
+
 function doGet(e) {
   testGuard_();
   if (e.parameter.action === 'slots') return out_(slots_());
@@ -1316,6 +1414,7 @@ function doGet(e) {
   const who = checkSession_(e.parameter.token);
   if (!who) return out_({ error: SIGN_IN });
   if (e.parameter.action === 'notes') return out_({ notes: readNotes_() });
+  if (e.parameter.action === 'rewards') return out_(rewardsData_());   // v2.1
   if (e.parameter.action === 'partners' || e.parameter.action === 'invoice') {
     if (roleOf_(who) === 'staff') return out_({ error: 'Only the owner can see partners.' });
     if (e.parameter.action === 'partners') return out_(partnersData_());
@@ -1344,6 +1443,10 @@ function doPost(e) {
     if (isDemo_(who)) return out_({ error: 'Make this login yours first.' });
     const tl = LockService.getScriptLock(); tl.waitLock(10000);
     try { return out_(teamAction_(who, b)); } finally { tl.releaseLock(); }
+  }
+  if (b.action === 'stamp' || b.action === 'redeem') {   // v2.1 rewards: owner and staff can both use the stamp card
+    const rl = LockService.getScriptLock(); rl.waitLock(10000);
+    try { return out_(rewardAction_(who, b)); } finally { rl.releaseLock(); }
   }
   if ((b.action === 'saveProducts' || b.action === 'saveImage') && roleOf_(who) === 'staff') return out_({ error: 'Only the owner can change products.' });
   if (/^(savePartner|savePartnerOrder|partnerPaid|deletePartnerOrder|emailInvoice)$/.test(b.action)) {
@@ -1381,6 +1484,9 @@ function doPost(e) {
         b.row.ready = cur[COLS.indexOf('ready')];
         if (cur[COLS.indexOf('source')] === 'partner') return out_({ error: 'Edit partner orders from the Partners tab.' });
       }
+      // v2.1: keep the prices the order was made at; add today's price only for newly added items.
+      const oldSnap = r > 0 ? String(sh.getRange(r, COLS.indexOf('prices') + 1).getValue()) : '';
+      b.row.prices = priceSnap_(parseItems_(b.row.items) || [], oldSnap);
       const vals = COLS.map(function (c) { return b.row[c] == null ? '' : String(b.row[c]); });
       if (r < 0) r = sh.getLastRow() + 1;
       const rng = sh.getRange(r, 1, 1, COLS.length);

@@ -114,7 +114,7 @@ function closeDay(k){
   var on=!shutDays[k],n=onDay(k).length;
   if(on)shutDays[k]=1;else delete shutDays[k];
   renderBoard();
-  toast(on?'Closed '+fmtLong(fromKey(k))+' to online orders'+(n?'. The '+n+(n===1?' order':' orders')+' already booked stay.':'.'):'Reopened '+fmtLong(fromKey(k)));
+  toast(on?'Closed '+fmtLong(fromKey(k))+' to online orders'+(n?'. The '+n+(n===1?' order already booked stays.':' orders already booked stay.'):'.'):'Reopened '+fmtLong(fromKey(k)));
   if(!configured)return;
   closeBusy++;
   api({action:'closeDay',date:k,closed:on}).then(function(){closeBusy--}).catch(function(e){

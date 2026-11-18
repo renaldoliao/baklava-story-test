@@ -1,4 +1,4 @@
-# Baklava Story order system, Version 2 (TEST COPY)
+# Baklava Story order system, Version 2.1 (TEST COPY)
 
 Version 2 is a **test copy** of the live system, made by Studio 1801 on Nov 18, 2026.
 It starts from Kevin's Version 1 snapshot (`baklava-story-v1.zip`, taken Nov 18, 2026)
@@ -15,6 +15,53 @@ When a change is tested and approved here, it gets copied to the live system by 
 ---
 
 ## What changed in v2 (latest first)
+
+### v2.1 — Nov 19, 2026: fixes from testing, Tolgay's answers, Rewards
+Backend (`backend/Code.gs`, paste it and publish a **New version**):
+- **Fixed: confirmation text said the wrong pickup day.** Before: an order for
+  Thursday Nov 19 was texted as "Wednesday, November 18" when the script's time
+  zone was not San Francisco. After: the day is always worked out in San Francisco
+  time (new `shopDay_`). Partner invoice dates had the same bug and are fixed too.
+- **Full address.** Before: "1830 Harrison St, Ste B". After: "1830 Harrison St,
+  Ste B, San Francisco, CA 94103" (Tolgay's answer, Nov 18). Also in
+  `order-page/index.html` (2 places) and `dashboard/z16.js`.
+- **Price at the time of the order.** New last column `prices` in the Orders tab.
+  Before: changing a price changed the "Booked" total of past orders. After: each
+  order keeps the prices it was made at. Older orders without it still use today's price.
+- **Reports skip orders waiting to be confirmed.** Before: unconfirmed (possibly
+  fake) orders counted as booked sales. After: Summary, Breakdown and Customers
+  count confirmed orders only.
+- **Spam limits per phone number.** Before: one person could fill a whole day with
+  fake orders, or use up the shop-wide 40 orders an hour. After: max 3 orders
+  waiting to be confirmed per phone number, and max 5 online orders an hour per
+  phone number (`MAX_PENDING_PER_PHONE`, `PHONE_PER_HOUR`).
+- **Quantity check.** Before: 0 became 1 and 401 became 99 without telling anyone.
+  After: each line must be 1 to 20, the same as the order page.
+- **Short codes when the Products tab is new.** Before: blank, so the dashboard
+  invented codes like "mxl". After: sp, sw, mp, mw, lp, lw.
+- **New: Rewards** (`stamp`, `redeem`, `rewards` actions, new `Rewards` tab).
+  Every picked-up order is 1 stamp. Staff add stamps by hand (for a coffee at the
+  counter). At 10 stamps the reward can be given and the card starts again. Goal and
+  reward wording can be changed in Script Properties: `REWARD_GOAL`, `REWARD_TEXT`.
+
+Order page (`order-page/index.html`):
+- **Customers can call the shop.** Before: only "message us on Instagram". After:
+  "Questions? Call or text us at (415) 766-7929" under the title, on the confirmation,
+  and in the small print. Tapping it calls on a phone. (Google Voice number Tolgay gave.)
+- Full address with zip on the page and the confirmation.
+
+Dashboard (new `dashboard/z17.js`, plus small edits):
+- **iPad held upright.** Before: the week board ran off the right edge. After: 3 days per row.
+- **Partners tab hidden.** Tolgay keeps partner invoices in Square. The code stays.
+- **"Add an item" list shows tray names.** Before: "1 pieces, $27.50 (sp)". After:
+  "Small tray, Pistachio, $27.50".
+- **History and the report** use the price at the time of the order and skip
+  unconfirmed orders (same as the backend).
+- **New Rewards tab**: add stamps by phone number, see every card, give the reward.
+- `j1.js`: "The 1 order already booked stay" now reads "stays".
+
+Still open with Tolgay: is 6:00 PM a pickup slot or closing time? (Last slot is 5:45 PM.)
+What is the real reward? (Placeholder: "A free small tray or a free coffee" at 10 stamps.)
 
 ### v2.0.1 — Nov 19, 2026: connected to the test backend
 - The TEST Sheet's script is now online as a web app. Its address is filled
@@ -84,9 +131,9 @@ Both sites are static, with no build step. On Vercel (Aldo's personal account,
 
 The dashboard is layered on purpose. `index.html` loads `s.css` and `x.css`, then
 `config.js`, then `j1.js` to `j4.js`, then the patch files `x.js`, `y.js`, `z.js`,
-`z2.js` to `z16.js`, and `j5.js` last. Later files override earlier code. The
+`z2.js` to `z17.js`, and `j5.js` last. Later files override earlier code. The
 comment at the top of each file says what it changes. Do not reorder the script
-tags. For a new change, add a new z file (next is `z17.js`) and load it before
+tags. For a new change, add a new z file (next is `z18.js`) and load it before
 `j5.js`, or edit the file that already owns that feature.
 
 Some values live in more than one place. The dashboard keeps its own `SLOT_CAP`
