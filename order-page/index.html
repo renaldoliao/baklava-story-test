@@ -95,6 +95,8 @@ html{-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-t
 .link{color:inherit;text-decoration:underline;text-underline-offset:3px;font-weight:600}
 footer{margin:18px 2px 0;color:var(--ink2);font-size:13px}
 .callus{margin-top:4px}.callus a{white-space:nowrap}
+.hours{margin-top:2px}
+.layercard{margin:18px 0 0;padding:22px;background:#111;color:#F1F1F1}.layercard h2{font-size:22px;line-height:1.1;margin:0 0 8px;color:#fff}.layercard p{margin:0 0 12px;color:#D0D0D0;font-size:15px;line-height:1.45}.layercard .fine{color:#A8A8A8;font-size:13px;margin:12px 0 0}.lsteps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#3A3A3A;border:1px solid #3A3A3A}.lsteps li{background:#111;padding:12px 14px}.lsteps b{display:block;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#FFC300}.lsteps span{display:block;margin-top:4px;font-size:16px;color:#fff}
 footer .flinks{display:block;margin-top:2px}footer .flinks a{display:inline-block;padding:13px 22px 13px 0}
 .optin .links a{display:inline-block;padding:11px 6px;margin:-11px -6px}
 .slip .tot{display:block;margin-top:8px;font-weight:700}
@@ -103,6 +105,7 @@ footer .flinks{display:block;margin-top:2px}footer .flinks a{display:inline-bloc
 <header>
 <h1 class="mark">Baklava Story</h1>
 <p>Order for pickup at 1830 Harrison St, Ste B, San Francisco, CA 94103. Pay when you pick up.</p>
+<p class="hours">Open Monday to Saturday, 9:30 am to 6 pm. Last pickup 5:45 pm.</p>
 <p class="callus">Questions? Call or text us at <a class="link" href="tel:+14157667929">(415) 766-7929</a>.</p>
 </header>
 
@@ -142,6 +145,7 @@ footer .flinks{display:block;margin-top:2px}footer .flinks a{display:inline-bloc
 </form>
 
 <section class="sheet done" id="done" hidden aria-live="polite"></section>
+<section class="layercard" aria-labelledby="lc-h"><h2 id="lc-h">The Layer Card</h2><p>Baklava is made of layers. So is a regular. Every visit adds one layer to your card, a pickup order or a coffee at the counter.</p><ol class="lsteps"><li><b>Layer 5</b><span>A Turkish coffee on us</span></li><li><b>Layer 10</b><span>A small tray on us</span></li></ol><p class="fine">No app and no paper card: we keep it under your phone number. When we text you that your order is ready, we tell you which layer you are on.</p></section>
 <footer>Baklava Story, Mission District, San Francisco.<span class="flinks"><a href="/terms/" class="link">Terms</a><a href="/privacy/" class="link">Privacy</a></span></footer>
 </div>
 <script src="/config.js"></script>
@@ -315,6 +319,7 @@ $('#f').hidden=true;
 var d=$('#done');d.hidden=false;
 d.innerHTML='<h2>We got your order</h2><div class="slip"><span class="when num">'+fmtLong(o.date)+', '+fmtT(o.time)+'</span><br><b>'+esc(o.name)+'</b><br>'+items+(o.note?'<br><i>'+esc(o.note)+'</i>':'')+'<span class="tot num">'+money(mergedLines().reduce(function(t,l){return t+findProd(l.code).price*l.qty},0))+' due when you pick up</span></div>'
 +'<p>'+(o.optin?'We will check it and text you a confirmation shortly. ':'We will check it shortly. ')+'Pickup is at 1830 Harrison St, Ste B, San Francisco, CA 94103. Pay when you collect.</p>'
++'<p>Picking it up adds a layer to your Layer Card.</p>'
 +'<p class="fine">To change or cancel, call or text us at <a class=\"link\" href=\"tel:+14157667929\">(415) 766-7929</a>, or message us on Instagram @baklava.story.</p>'
 +'<p style="margin-top:18px"><button type="button" class="link" id="again">Place another order</button></p>';
 window.scrollTo(0,0);

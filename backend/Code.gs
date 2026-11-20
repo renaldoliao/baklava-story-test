@@ -1,7 +1,7 @@
 // =====================================================================
-// Baklava Story v2 — TEST COPY (Studio 1801 testing only)
+// Baklava Story v2, TEST COPY (Studio 1801 testing only)
 // Paste this into the Apps Script of the TEST Sheet
-// ("Baklava Story – TEST (Studio 1801 testing only)"), never into Tolgay's.
+// ("Baklava Story TEST (Studio 1801 testing only)"), never into Tolgay's.
 // The guard below stops this script if it is ever run inside the live Sheet.
 // =====================================================================
 const LIVE_SHEET_ID_ = '1wuRyo7VLoDn1NXjfTCa4eNCcPBDAIJW8ks9E9SdugB0';
@@ -845,6 +845,10 @@ function textFor_(row, kind) {
   const def = MSG_DEFAULTS[kind === 'ready' ? 1 : 0], custom = customMsg_(def[0]);
   let out = fillMsg_(custom || def[1], vars);
   if (custom && /\{\w+\}/.test(out)) out = fillMsg_(def[1], vars);   // a misspelled {word}: use the built-in wording
+  if (kind === 'ready') {   // v2.2: tell the customer where they are on the Layer Card
+    const ll = layerLine_(row);
+    if (ll) out = out.replace(/\s*Reply STOP to opt out\.?\s*$/i, '') + ' ' + ll;
+  }
   if (!/stop/i.test(out)) out += ' Reply STOP to opt out.';
   return out;
 }
@@ -1330,18 +1334,29 @@ function rebuildIfDirty_() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// v2.1 Rewards: a stamp card per phone number.
-// Every picked-up order earns 1 stamp automatically (counted from the Orders tab).
-// Staff add extra stamps by hand on the dashboard, for example for a coffee bought at the counter.
-// When a card reaches REWARD_GOAL stamps, staff can give the reward and the card starts again.
-// The goal and the reward wording can be changed in Script Properties: REWARD_GOAL and REWARD_TEXT.
+// v2.2 The Layer Card (loyalty), replaces the v2.1 stamp card.
+// Baklava is made of layers, so every visit adds a layer to the customer's card:
+//   - every picked-up order is 1 layer, counted from the Orders tab automatically
+//   - every counter sale with a phone number is 1 layer (coffee, tea, pieces), see Counter below
+//   - staff can add a layer by hand, and undo one added by mistake the same day
+// One layer per visit, not per item, so the cost of the program stays predictable.
+// Rewards on every card of CARD_SIZE layers (default 10):
+//   layer 5: a Turkish coffee on us     layer 10: a small tray on us
+// Rewards wait on the card until given, and the card keeps counting.
+// Change them in Script Properties: CARD_SIZE (number) and CARD_REWARDS
+// (JSON, for example [{"at":5,"text":"A Turkish coffee on us"},{"at":10,"text":"A small tray on us"}]).
 // ---------------------------------------------------------------------------------------------
 const REWARD_SHEET = 'Rewards';
 const RCOLS = ['logged', 'phone', 'name', 'kind', 'count', 'note', 'by'];
 function rewardCfg_() {
   const p = PropertiesService.getScriptProperties();
-  const g = Math.round(+p.getProperty('REWARD_GOAL') || 10);
-  return { goal: g >= 2 && g <= 50 ? g : 10, text: p.getProperty('REWARD_TEXT') || 'A free small tray or a free coffee' };
+  let size = Math.round(+p.getProperty('CARD_SIZE') || 10); if (size < 2 || size > 50) size = 10;
+  let steps = null;
+  try { steps = JSON.parse(p.getProperty('CARD_REWARDS') || 'null'); } catch (e) { steps = null; }
+  if (!Array.isArray(steps) || !steps.length) steps = [{ at: 5, text: 'A Turkish coffee on us' }, { at: 10, text: 'A small tray on us' }];
+  steps = steps.map(function (s) { return { at: Math.round(+s.at), text: String(s.text || '').slice(0, 60) }; })
+    .filter(function (s) { return s.at >= 1 && s.at <= size && s.text; }).sort(function (a, b) { return a.at - b.at; });
+  return { size: size, steps: steps, name: p.getProperty('CARD_NAME') || 'The Layer Card' };
 }
 function rewardSheet_() {
   const ss = SpreadsheetApp.getActive();
@@ -1355,15 +1370,29 @@ function rewardSheet_() {
   return sh;
 }
 function rkey_(phone) { const d = rawDigits_(phone); return d.length === 11 && d.charAt(0) === '1' ? d.slice(1) : d; }
+function cardOf_(c, cfg) {
+  const T = c.orders + c.extra;
+  c.layers = T;
+  c.onCard = T === 0 ? 0 : (T % cfg.size === 0 ? cfg.size : T % cfg.size);
+  c.rewards = cfg.steps.map(function (s) {
+    const earned = T >= s.at ? Math.floor((T - s.at) / cfg.size) + 1 : 0, used = c.used[s.at] || 0;
+    return { at: s.at, text: s.text, ready: Math.max(0, earned - used), given: used };
+  });
+  c.ready = c.rewards.reduce(function (n, r) { return n + r.ready; }, 0);
+  const nxt = cfg.steps.filter(function (s) { return s.at > (T % cfg.size); })[0] || cfg.steps[0];
+  c.next = { at: nxt.at, text: nxt.text, left: nxt.at > (T % cfg.size) ? nxt.at - (T % cfg.size) : cfg.size - (T % cfg.size) + nxt.at };
+  return c;
+}
 function rewardsData_() {
   const cfg = rewardCfg_(), cards = {};
   const card = function (k, name, phone) {
-    if (!cards[k]) cards[k] = { key: k, name: '', phone: phone || '', orders: 0, extra: 0, used: 0, last: '' };
+    if (!cards[k]) cards[k] = { key: k, name: '', phone: phone || '', orders: 0, extra: 0, used: {}, last: '', log: [] };
     if (name && !cards[k].name) cards[k].name = String(name).trim();
     if (phone && !cards[k].phone) cards[k].phone = phone;
     return cards[k];
   };
-  read_().forEach(function (r) {
+  // newest orders first, so the card shows the name from the latest order
+  read_().slice().reverse().forEach(function (r) {
     if (r.source === 'partner' || String(r.status).toLowerCase() !== 'picked') return;
     const k = rkey_(r.phone); if (k.length < 7) return;
     const c = card(k, r.name, r.phone); c.orders++; if (r.date > c.last) c.last = r.date;
@@ -1372,31 +1401,126 @@ function rewardsData_() {
   if (n > 0) sh.getRange(2, 1, n, RCOLS.length).getDisplayValues().forEach(function (v) {
     const k = rkey_(v[1]); if (k.length < 7) return;
     const c = card(k, v[2], v[1]), cnt = Math.max(0, Math.round(+v[4] || 0));
-    if (v[3] === 'redeem') c.used += cnt; else c.extra += cnt;
+    if (v[3] === 'redeem') { const at = Math.round(+String(v[5]).replace(/^layer\s*/i, '')) || cfg.size; c.used[at] = (c.used[at] || 0) + cnt; }
+    else if (v[3] === 'stamp' || v[3] === 'counter') c.extra += cnt;
+    else if (v[3] === 'unstamp') c.extra -= cnt;
+    c.log.push({ when: v[0], kind: v[3], count: cnt, note: v[5] });
     const d = String(v[0]).slice(0, 10); if (d > c.last) c.last = d;
   });
   const list = Object.keys(cards).map(function (k) {
-    const c = cards[k], total = c.orders + c.extra, left = Math.max(0, total - c.used * cfg.goal);
-    c.stamps = left; c.ready = Math.floor(left / cfg.goal); return c;
-  }).sort(function (a, b) { return b.stamps - a.stamps || (b.last > a.last ? 1 : -1); });
-  return { goal: cfg.goal, text: cfg.text, cards: list };
+    const c = cards[k]; c.extra = Math.max(0, c.extra); c.log = c.log.slice(-5); return cardOf_(c, cfg);
+  }).filter(function (c) { return c.layers > 0 || c.log.length; })
+    .sort(function (a, b) { return b.ready - a.ready || (b.last > a.last ? 1 : b.last < a.last ? -1 : 0); });
+  return { size: cfg.size, steps: cfg.steps, name: cfg.name, cards: list };
 }
+function cardFor_(phone) {
+  const k = rkey_(phone);
+  return k.length >= 7 ? rewardsData_().cards.filter(function (c) { return c.key === k; })[0] || null : null;
+}
+function cleanText_(v, n) { return String(v || '').replace(/^[=+\-@\s]+/, '').trim().slice(0, n); }
 function rewardAction_(who, b) {
   const phone = String(b.phone || '').trim(), k = rkey_(phone);
   if (!phoneOk_(phone) || k.length < 7) return { error: 'Enter the customer’s phone number.' };
-  const name = String(b.name || '').replace(/^[=+\-@\s]+/, '').trim().slice(0, 60);
-  const note = String(b.note || '').replace(/^[=+\-@\s]+/, '').trim().slice(0, 80);
+  const name = cleanText_(b.name, 60), note = cleanText_(b.note, 80);
   const sh = rewardSheet_(), stamp = Utilities.formatDate(new Date(), SHOP_TZ, 'yyyy-MM-dd HH:mm');
   if (b.action === 'stamp') {
-    const cnt = Math.round(+b.count || 1);
-    if (cnt < 1 || cnt > 5) return { error: 'Add 1 to 5 stamps at a time.' };
+    const cnt = b.count == null || b.count === '' ? 1 : Math.round(+b.count);   // v2.2: 0 is refused, before it became 1
+    if (!(cnt >= 1 && cnt <= 3)) return { error: 'Add 1 to 3 layers at a time.' };
     sh.appendRow([stamp, fmtPhone_(phone), name, 'stamp', String(cnt), note || 'Added by hand', who]);
+  } else if (b.action === 'unstamp') {
+    // undo the latest hand-added layer from today, for a mistake
+    const n = sh.getLastRow() - 1, today = stamp.slice(0, 10);
+    const rows = n > 0 ? sh.getRange(2, 1, n, RCOLS.length).getDisplayValues() : [];
+    let undone = 0;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const v = rows[i];
+      if (rkey_(v[1]) !== k || String(v[0]).slice(0, 10) !== today) continue;
+      if (v[3] === 'unstamp') undone += +v[4] || 0;
+      if (v[3] === 'stamp') { if (undone > 0) { undone--; continue; } sh.appendRow([stamp, fmtPhone_(phone), name, 'unstamp', '1', 'Undo', who]); return Object.assign({ ok: true }, rewardsData_()); }
+    }
+    return { error: 'There is no layer added by hand today to undo.' };
   } else {
-    const cur = rewardsData_().cards.filter(function (c) { return c.key === k; })[0];
-    if (!cur || cur.ready < 1) return { error: 'This card does not have a reward yet.' };
-    sh.appendRow([stamp, fmtPhone_(phone), name || cur.name, 'redeem', '1', note || 'Reward given', who]);
+    const at = Math.round(+b.at), cur = cardFor_(phone);
+    const r = cur && cur.rewards.filter(function (x) { return x.at === at; })[0];
+    if (!r || r.ready < 1) return { error: 'That reward is not ready on this card yet.' };
+    sh.appendRow([stamp, fmtPhone_(phone), name || cur.name, 'redeem', '1', 'layer ' + at, who]);
   }
   return Object.assign({ ok: true }, rewardsData_());
+}
+// One line for the "ready" text, for example "Picking up adds layer 4 of 10 to your Baklava Story card."
+function layerLine_(row) {
+  try {
+    if (PropertiesService.getScriptProperties().getProperty('CARD_IN_TEXTS') === 'off') return '';
+    const cfg = rewardCfg_(), c = cardFor_(row.phone), T = c ? c.layers : 0;
+    const pos = (T % cfg.size) + 1, step = cfg.steps.filter(function (s) { return s.at === pos; })[0];
+    return step ? 'Picking up adds layer ' + pos + ' of ' + cfg.size + ' to your card: ' + step.text.charAt(0).toLowerCase() + step.text.slice(1) + '.'
+      : 'Picking up adds layer ' + pos + ' of ' + cfg.size + ' to your Baklava Story card.';
+  } catch (e) { return ''; }
+}
+
+// ---------------------------------------------------------------------------------------------
+// v2.2 Counter: coffee and other things sold at the counter, so Tolgay sees coffee sales and
+// coffee customers without online coffee ordering. Payment still happens in Square as today;
+// this only records what was sold and, with a phone number, adds a layer to that card.
+// The menu lives in the "Counter menu" tab of this Sheet: one row per item, edit it right there.
+// ---------------------------------------------------------------------------------------------
+const COUNTER_SHEET = 'Counter', CMENU_SHEET = 'Counter menu';
+const CCOLS = ['logged', 'date', 'items', 'total', 'phone', 'name', 'by', 'id'];
+const DEFAULT_COUNTER = [['Turkish coffee', 4.5], ['Espresso', 3.5], ['Cappuccino', 5], ['Latte', 5.5], ['Iced latte', 6], ['Turkish tea', 3], ['Baklava, 2 pieces', 6]];
+function counterMenu_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(CMENU_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(CMENU_SHEET);
+    sh.getRange(1, 1, 1, 3).setValues([['item', 'price', 'on']]).setFontWeight('bold').setBackground('#000000').setFontColor('#ffffff');
+    sh.getRange(2, 1, DEFAULT_COUNTER.length, 3).setValues(DEFAULT_COUNTER.map(function (d) { return [d[0], d[1], 'yes']; }));
+    sh.setFrozenRows(1);
+    sh.getRange(DEFAULT_COUNTER.length + 3, 1).setValue('Edit names and prices here. Type no in "on" to hide an item. The dashboard picks up changes on its next refresh.');
+  }
+  const n = sh.getLastRow() - 1;
+  return (n > 0 ? sh.getRange(2, 1, n, 3).getDisplayValues() : []).filter(function (v) {
+    return v[0] && !isNaN(parseFloat(String(v[1]).replace(/[$,]/g, ''))) && !/^(no|off|false)$/i.test(String(v[2]).trim());
+  }).map(function (v) { return { name: String(v[0]).trim().slice(0, 40), price: Math.round(parseFloat(String(v[1]).replace(/[$,]/g, '')) * 100) / 100 }; });
+}
+function counterSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(COUNTER_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(COUNTER_SHEET);
+    sh.getRange(1, 1, 1, CCOLS.length).setValues([CCOLS]).setFontWeight('bold').setBackground('#000000').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+    sh.getRange('A:H').setNumberFormat('@');
+  }
+  return sh;
+}
+function counterData_(days) {
+  const sh = counterSheet_(), n = sh.getLastRow() - 1, today = shopNow_().date;
+  const from = Utilities.formatDate(new Date(Date.now() - (Math.max(1, days || 7) - 1) * 86400000), SHOP_TZ, 'yyyy-MM-dd');
+  const sales = (n > 0 ? sh.getRange(2, 1, n, CCOLS.length).getDisplayValues() : []).filter(function (v) { return v[1] >= from; })
+    .map(function (v) { return { at: v[0], date: v[1], items: v[2], total: +v[3] || 0, phone: v[4], name: v[5], id: v[7] }; });
+  return { menu: counterMenu_(), today: today, sales: sales };
+}
+function counterSale_(who, b) {
+  const menu = counterMenu_(), byName = {};
+  menu.forEach(function (m) { byName[m.name.toLowerCase()] = m; });
+  const lines = (Array.isArray(b.items) ? b.items : []).map(function (i) {
+    const m = byName[String(i && i.name || '').toLowerCase()], q = Math.round(+(i && i.qty));
+    return m && q >= 1 && q <= 20 ? { name: m.name, price: m.price, qty: q } : null;
+  });
+  if (!lines.length || lines.some(function (l) { return !l; })) return { error: 'Pick at least one item from the counter menu.' };
+  const phone = String(b.phone || '').trim();
+  if (phone && !phoneOk_(phone)) return { error: 'That phone number does not look right. Leave it empty if the customer did not give one.' };
+  const name = cleanText_(b.name, 60), now = new Date();
+  const total = Math.round(lines.reduce(function (s, l) { return s + l.price * l.qty; }, 0) * 100) / 100;
+  const id = 'c' + Utilities.getUuid().replace(/-/g, '').slice(0, 9);
+  counterSheet_().appendRow([Utilities.formatDate(now, SHOP_TZ, 'yyyy-MM-dd HH:mm'), shopNow_().date,
+    lines.map(function (l) { return l.qty + ' x ' + l.name; }).join(', '), total.toFixed(2), phone ? fmtPhone_(phone) : '', name, who, id]);
+  let card = null;
+  if (phone) {
+    rewardSheet_().appendRow([Utilities.formatDate(now, SHOP_TZ, 'yyyy-MM-dd HH:mm'), fmtPhone_(phone), name, 'counter', '1', 'Counter sale ' + id, who]);
+    card = cardFor_(phone);
+  }
+  return { ok: true, id: id, total: total, card: card, counter: counterData_(1) };
 }
 
 function doGet(e) {
@@ -1414,7 +1538,8 @@ function doGet(e) {
   const who = checkSession_(e.parameter.token);
   if (!who) return out_({ error: SIGN_IN });
   if (e.parameter.action === 'notes') return out_({ notes: readNotes_() });
-  if (e.parameter.action === 'rewards') return out_(rewardsData_());   // v2.1
+  if (e.parameter.action === 'rewards') return out_(rewardsData_());   // v2.1, v2.2 Layer Card
+  if (e.parameter.action === 'counter') return out_(counterData_(+e.parameter.days || 7));   // v2.2
   if (e.parameter.action === 'partners' || e.parameter.action === 'invoice') {
     if (roleOf_(who) === 'staff') return out_({ error: 'Only the owner can see partners.' });
     if (e.parameter.action === 'partners') return out_(partnersData_());
@@ -1444,9 +1569,9 @@ function doPost(e) {
     const tl = LockService.getScriptLock(); tl.waitLock(10000);
     try { return out_(teamAction_(who, b)); } finally { tl.releaseLock(); }
   }
-  if (b.action === 'stamp' || b.action === 'redeem') {   // v2.1 rewards: owner and staff can both use the stamp card
+  if (b.action === 'stamp' || b.action === 'redeem' || b.action === 'unstamp' || b.action === 'counterSale') {   // v2.2: owner and staff both use these
     const rl = LockService.getScriptLock(); rl.waitLock(10000);
-    try { return out_(rewardAction_(who, b)); } finally { rl.releaseLock(); }
+    try { return out_(b.action === 'counterSale' ? counterSale_(who, b) : rewardAction_(who, b)); } finally { rl.releaseLock(); }
   }
   if ((b.action === 'saveProducts' || b.action === 'saveImage') && roleOf_(who) === 'staff') return out_({ error: 'Only the owner can change products.' });
   if (/^(savePartner|savePartnerOrder|partnerPaid|deletePartnerOrder|emailInvoice)$/.test(b.action)) {

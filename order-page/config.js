@@ -1,5 +1,5 @@
 /* =====================================================================
-   Baklava Story v2 — TEST COPY SETTINGS (Studio 1801 testing only)
+   Baklava Story v2, TEST COPY SETTINGS (Studio 1801 testing only)
 
    This file decides which backend (Google Sheet + Apps Script) this site
    talks to. It must ALWAYS point at the TEST Sheet's web app, never at
@@ -28,7 +28,7 @@ window.BS_TEST_API_URL = 'https://script.google.com/macros/s/AKfycbxbRry9SMes2KO
     var b = document.createElement('div');
     b.setAttribute('role', 'status');
     b.style.cssText = 'position:sticky;top:0;z-index:99999;padding:8px 12px;font:600 13px/1.3 system-ui,sans-serif;text-align:center;color:#fff;background:' + (problem ? '#C62828' : '#E65100');
-    b.textContent = problem ? 'TEST COPY — ' + problem : 'TEST COPY — Studio 1801 testing only. Not Tolgay’s live system.';
+    b.textContent = problem ? 'TEST COPY: ' + problem : 'TEST COPY: Studio 1801 testing only. Not Tolgay’s live system.';
     document.body.insertBefore(b, document.body.firstChild);
   }
   if (document.body) bar(); else document.addEventListener('DOMContentLoaded', bar);

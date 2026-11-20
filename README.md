@@ -1,4 +1,4 @@
-# Baklava Story order system, Version 2.1 (TEST COPY)
+# Baklava Story order system, Version 2.2 (TEST COPY)
 
 Version 2 is a **test copy** of the live system, made by Studio 1801 on Nov 18, 2026.
 It starts from Kevin's Version 1 snapshot (`baklava-story-v1.zip`, taken Nov 18, 2026)
@@ -7,7 +7,7 @@ Tolgay's live orders.
 
 - **Live (Tolgay uses this, do not touch):** Sheet "Baklava Story Orders",
   baklava-story.vercel.app, baklava-story-orders.vercel.app
-- **Test (this copy):** Sheet "Baklava Story – TEST (Studio 1801 testing only)"
+- **Test (this copy):** Sheet "Baklava Story TEST (Studio 1801 testing only)"
   in Aldo's Google Drive, plus the test sites deployed from this repo
 
 When a change is tested and approved here, it gets copied to the live system by hand.
@@ -16,7 +16,52 @@ When a change is tested and approved here, it gets copied to the live system by 
 
 ## What changed in v2 (latest first)
 
-### v2.1 — Nov 19, 2026: fixes from testing, Tolgay's answers, Rewards
+### v2.2, Nov 21, 2026: The Layer Card, Counter, bake list
+A concept to show Tolgay, built so he can try it for real on the test copy.
+
+**The Layer Card (loyalty, replaces the v2.1 stamp card).** Baklava is made of
+layers, so every visit adds one layer to the customer's card, found by phone number.
+- Picked-up orders count by themselves. Counter sales with a phone number count.
+  Staff can add a layer by hand, and undo one added by mistake the same day.
+- One layer per visit, not per item, so the cost stays predictable.
+- Rewards on every card of 10: layer 5 "A Turkish coffee on us" (brings tray
+  customers to the coffee), layer 10 "A small tray on us". Then the card starts
+  again; rewards wait on the card until given.
+- The "ready" text tells the customer where they are, for example "Picking up adds
+  layer 4 of 10 to your Baklava Story card."
+- Settings in Script Properties: `CARD_SIZE`, `CARD_REWARDS` (JSON), `CARD_NAME`,
+  `CARD_IN_TEXTS` = `off` to leave the line out of texts.
+- Dashboard tab "Layer Card": every card as 10 layers, rewards ready with
+  "Give it now" (tap twice), "+1 layer", "Undo a layer added today", search.
+- Order page: a "The Layer Card" panel explains it to customers, and the confirmation
+  says the pickup adds a layer.
+
+**Counter (coffee without online ordering).** Dashboard tab "Counter": tap the items,
+take payment in Square as usual, save. With a phone number the sale adds a layer and
+shows the customer's card, including a reward that is ready. Shows today's sales,
+drinks and total. The menu is the new "Counter menu" tab in the Sheet (placeholder
+prices: Turkish coffee $4.50, espresso $3.50, cappuccino $5, latte $5.50, iced latte
+$6, Turkish tea $3, baklava 2 pieces $6). Sales go to the new "Counter" tab.
+
+**Week board:** a "Reward ready" tag on the order of a customer with a reward waiting,
+so it is given at pickup.
+
+**Bake list:** counts confirmed orders only. Orders waiting to be confirmed are listed
+apart, so the kitchen never bakes for an unconfirmed (possibly fake) order. "105 x 1
+pieces" now reads "105 ordered".
+
+**Order page:** "Open Monday to Saturday, 9:30 am to 6 pm. Last pickup 5:45 pm."
+(6 pm is closing time.)
+
+**Fixes:** 0 layers is refused (before, 0 became 1). A card shows the name from the
+customer's latest order.
+
+Files: `backend/Code.gs` (publish a New version), new `dashboard/z18.js`,
+`dashboard/z17.js` (old Rewards screen removed), `dashboard/index.html`,
+`order-page/index.html`. Test Sheet renamed "Baklava Story TEST (Studio 1801
+testing only)".
+
+### v2.1, Nov 19, 2026: fixes from testing, Tolgay's answers, Rewards
 Backend (`backend/Code.gs`, paste it and publish a **New version**):
 - **Fixed: confirmation text said the wrong pickup day.** Before: an order for
   Thursday Nov 19 was texted as "Wednesday, November 18" when the script's time
@@ -63,14 +108,14 @@ Dashboard (new `dashboard/z17.js`, plus small edits):
 Still open with Tolgay: is 6:00 PM a pickup slot or closing time? (Last slot is 5:45 PM.)
 What is the real reward? (Placeholder: "A free small tray or a free coffee" at 10 stamps.)
 
-### v2.0.1 — Nov 19, 2026: connected to the test backend
+### v2.0.1, Nov 19, 2026: connected to the test backend
 - The TEST Sheet's script is now online as a web app. Its address is filled
   into `order-page/config.js` and `dashboard/config.js`.
 - Checked: the test backend answers and returns the six trays from the TEST Sheet.
 - Texts are in test mode (`TEXT_MODE` = `test` in Script Properties), so no
   real texts are sent.
 
-### v2.0 — Nov 18, 2026: test copy set up
+### v2.0, Nov 18, 2026: test copy set up
 - **Points at the test backend, not the live one.** The live backend address was
   removed from `order-page/index.html` and `dashboard/j1.js`. Both now read the
   address from a new `config.js` file in their folder.
@@ -105,7 +150,7 @@ attached to. There is no other server.
 
 ## Setting up the test backend (one time)
 
-1. Open the TEST Sheet ("Baklava Story – TEST (Studio 1801 testing only)").
+1. Open the TEST Sheet ("Baklava Story TEST (Studio 1801 testing only)").
 2. Extensions > Apps Script. Delete what is in `Code.gs`, paste all of
    `backend/Code.gs` from this repo, and Save.
 3. Project Settings (gear icon) > Script Properties > add `TEXT_MODE` = `test`.
@@ -131,9 +176,9 @@ Both sites are static, with no build step. On Vercel (Aldo's personal account,
 
 The dashboard is layered on purpose. `index.html` loads `s.css` and `x.css`, then
 `config.js`, then `j1.js` to `j4.js`, then the patch files `x.js`, `y.js`, `z.js`,
-`z2.js` to `z17.js`, and `j5.js` last. Later files override earlier code. The
+`z2.js` to `z18.js`, and `j5.js` last. Later files override earlier code. The
 comment at the top of each file says what it changes. Do not reorder the script
-tags. For a new change, add a new z file (next is `z18.js`) and load it before
+tags. For a new change, add a new z file (next is `z19.js`) and load it before
 `j5.js`, or edit the file that already owns that feature.
 
 Some values live in more than one place. The dashboard keeps its own `SLOT_CAP`
