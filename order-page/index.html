@@ -319,7 +319,7 @@ $('#f').hidden=true;
 var d=$('#done');d.hidden=false;
 d.innerHTML='<h2>We got your order</h2><div class="slip"><span class="when num">'+fmtLong(o.date)+', '+fmtT(o.time)+'</span><br><b>'+esc(o.name)+'</b><br>'+items+(o.note?'<br><i>'+esc(o.note)+'</i>':'')+'<span class="tot num">'+money(mergedLines().reduce(function(t,l){return t+findProd(l.code).price*l.qty},0))+' due when you pick up</span></div>'
 +'<p>'+(o.optin?'We will check it and text you a confirmation shortly. ':'We will check it shortly. ')+'Pickup is at 1830 Harrison St, Ste B, San Francisco, CA 94103. Pay when you collect.</p>'
-+'<p>Picking it up adds a layer to your Layer Card.</p>'
++(window.BS_CARD_ON===false?'':'<p>Picking it up adds a layer to your '+esc(window.BS_CARD_NAME||'Layer Card').replace(/^the /i,'')+'.</p>')
 +'<p class="fine">To change or cancel, call or text us at <a class=\"link\" href=\"tel:+14157667929\">(415) 766-7929</a>, or message us on Instagram @baklava.story.</p>'
 +'<p style="margin-top:18px"><button type="button" class="link" id="again">Place another order</button></p>';
 window.scrollTo(0,0);
@@ -332,6 +332,23 @@ $('#note').value='';$('#optin').checked=false;loadProducts().then(function(){ren
 $('#phone').addEventListener('input',function(ev){if(ev.inputType&&ev.inputType.indexOf('delete')===0)return;this.value=fmtPhone(this.value)});
 $('#phone').addEventListener('blur',function(){if(this.value)this.value=fmtPhone(this.value)});
 renderLines();loadProducts().then(function(){renderLines()});load();
+})();
+</script>
+<script>
+/* v2.3: the Layer Card panel follows the owner's Card settings (name, rewards, on or off). */
+(function(){
+  var U=window.BS_TEST_API_URL,P=document.querySelector('.layercard');if(!P||!/^https:/.test(U||''))return;
+  function e(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  fetch(U+'?action=card').then(function(r){return r.json()}).then(function(c){
+    if(!c||c.error)return;
+    if(c.on===false){P.hidden=true;window.BS_CARD_ON=false;return}
+    window.BS_CARD_NAME=c.name;
+    P.querySelector('h2').textContent=c.name||'The Layer Card';
+    var steps=(c.steps||[]).slice(0,5);
+    if(steps.length)P.querySelector('.lsteps').innerHTML=steps.map(function(s){return '<li><b>Layer '+s.at+'</b><span>'+e(s.text)+'</span></li>'}).join('');
+    P.querySelector('.lsteps').style.gridTemplateColumns=steps.length>2?'1fr 1fr 1fr':'1fr 1fr';
+    var p=P.querySelector('p');if(p)p.textContent='Baklava is made of layers. So is a regular. Every visit adds one layer to your card, a pickup order or a coffee at the counter. A full card is '+c.size+' layers, then it starts again.';
+  }).catch(function(){});
 })();
 </script>
 </body></html>

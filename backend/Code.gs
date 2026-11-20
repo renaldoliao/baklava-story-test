@@ -1408,10 +1408,39 @@ function rewardsData_() {
     const d = String(v[0]).slice(0, 10); if (d > c.last) c.last = d;
   });
   const list = Object.keys(cards).map(function (k) {
-    const c = cards[k]; c.extra = Math.max(0, c.extra); c.log = c.log.slice(-5); return cardOf_(c, cfg);
+    const c = cards[k]; c.extra = Math.max(0, c.extra); c.log = c.log.slice(-8).reverse(); return cardOf_(c, cfg);
   }).filter(function (c) { return c.layers > 0 || c.log.length; })
     .sort(function (a, b) { return b.ready - a.ready || (b.last > a.last ? 1 : b.last < a.last ? -1 : 0); });
-  return { size: cfg.size, steps: cfg.steps, name: cfg.name, cards: list };
+  const p = PropertiesService.getScriptProperties();
+  return { size: cfg.size, steps: cfg.steps, name: cfg.name, inTexts: p.getProperty('CARD_IN_TEXTS') !== 'off', on: p.getProperty('CARD_OFF') !== 'yes', cards: list };
+}
+// v2.3: what customers may see (order page panel): the program, never any customer data.
+function cardPublic_() {
+  const cfg = rewardCfg_();
+  return { name: cfg.name, size: cfg.size, steps: cfg.steps, on: PropertiesService.getScriptProperties().getProperty('CARD_OFF') !== 'yes' };
+}
+// v2.3: the owner changes the program from the dashboard (Layer Card, Card settings). Saved in Script Properties.
+function saveCardSettings_(b) {
+  const name = cleanText_(b.name, 40) || 'The Layer Card';
+  const size = Math.round(+b.size);
+  if (!(size >= 3 && size <= 20)) return { error: 'A card can have 3 to 20 layers.' };
+  const seen = {}, steps = [];
+  (Array.isArray(b.steps) ? b.steps : []).forEach(function (st) {
+    const at = Math.round(+(st && st.at)), text = cleanText_(st && st.text, 60);
+    if (!text) return;
+    if (!(at >= 1 && at <= size)) { steps.push({ bad: 'Layer ' + at + ' is past the end of a ' + size + '-layer card.' }); return; }
+    if (seen[at]) { steps.push({ bad: 'There are two rewards on layer ' + at + '.' }); return; }
+    seen[at] = 1; steps.push({ at: at, text: text });
+  });
+  const bad = steps.filter(function (x) { return x.bad; })[0];
+  if (bad) return { error: bad.bad };
+  if (!steps.length) return { error: 'Add at least one reward.' };
+  if (steps.length > 5) return { error: 'Keep it to 5 rewards or fewer per card.' };
+  steps.sort(function (a, c) { return a.at - c.at; });
+  const p = PropertiesService.getScriptProperties();
+  p.setProperties({ CARD_NAME: name, CARD_SIZE: String(size), CARD_REWARDS: JSON.stringify(steps),
+    CARD_IN_TEXTS: b.inTexts === false ? 'off' : 'on', CARD_OFF: b.on === false ? 'yes' : 'no' });
+  return Object.assign({ ok: true }, rewardsData_());
 }
 function cardFor_(phone) {
   const k = rkey_(phone);
@@ -1427,6 +1456,11 @@ function rewardAction_(who, b) {
     const cnt = b.count == null || b.count === '' ? 1 : Math.round(+b.count);   // v2.2: 0 is refused, before it became 1
     if (!(cnt >= 1 && cnt <= 3)) return { error: 'Add 1 to 3 layers at a time.' };
     sh.appendRow([stamp, fmtPhone_(phone), name, 'stamp', String(cnt), note || 'Added by hand', who]);
+  } else if (b.action === 'treat') {
+    // v2.3: a one-off gift for one customer (birthday, sorry for the wait). It does not change their layers.
+    const what = cleanText_(b.text, 80);
+    if (what.length < 2) return { error: 'Write what you are giving them.' };
+    sh.appendRow([stamp, fmtPhone_(phone), name, 'treat', '1', what, who]);
   } else if (b.action === 'unstamp') {
     // undo the latest hand-added layer from today, for a mistake
     const n = sh.getLastRow() - 1, today = stamp.slice(0, 10);
@@ -1450,7 +1484,8 @@ function rewardAction_(who, b) {
 // One line for the "ready" text, for example "Picking up adds layer 4 of 10 to your Baklava Story card."
 function layerLine_(row) {
   try {
-    if (PropertiesService.getScriptProperties().getProperty('CARD_IN_TEXTS') === 'off') return '';
+    const pp = PropertiesService.getScriptProperties();
+    if (pp.getProperty('CARD_IN_TEXTS') === 'off' || pp.getProperty('CARD_OFF') === 'yes') return '';
     const cfg = rewardCfg_(), c = cardFor_(row.phone), T = c ? c.layers : 0;
     const pos = (T % cfg.size) + 1, step = cfg.steps.filter(function (s) { return s.at === pos; })[0];
     return step ? 'Picking up adds layer ' + pos + ' of ' + cfg.size + ' to your card: ' + step.text.charAt(0).toLowerCase() + step.text.slice(1) + '.'
@@ -1526,6 +1561,7 @@ function counterSale_(who, b) {
 function doGet(e) {
   testGuard_();
   if (e.parameter.action === 'slots') return out_(slots_());
+  if (e.parameter.action === 'card') return out_(cardPublic_());   // v2.3: public, for the order page panel
   if (e.parameter.action === 'products') {
     // The order page asks without a token and only sees what is on sale. Staff see everything.
     const all = readProducts_(), who = checkSession_(e.parameter.token);
@@ -1569,7 +1605,11 @@ function doPost(e) {
     const tl = LockService.getScriptLock(); tl.waitLock(10000);
     try { return out_(teamAction_(who, b)); } finally { tl.releaseLock(); }
   }
-  if (b.action === 'stamp' || b.action === 'redeem' || b.action === 'unstamp' || b.action === 'counterSale') {   // v2.2: owner and staff both use these
+  if (b.action === 'cardSettings') {   // v2.3: owner only
+    if (roleOf_(who) === 'staff') return out_({ error: 'Only the owner can change the Layer Card.' });
+    return out_(saveCardSettings_(b));
+  }
+  if (b.action === 'stamp' || b.action === 'redeem' || b.action === 'unstamp' || b.action === 'treat' || b.action === 'counterSale') {   // v2.2: owner and staff both use these
     const rl = LockService.getScriptLock(); rl.waitLock(10000);
     try { return out_(b.action === 'counterSale' ? counterSale_(who, b) : rewardAction_(who, b)); } finally { rl.releaseLock(); }
   }

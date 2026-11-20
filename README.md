@@ -1,4 +1,4 @@
-# Baklava Story order system, Version 2.2 (TEST COPY)
+# Baklava Story order system, Version 2.3 (TEST COPY)
 
 Version 2 is a **test copy** of the live system, made by Studio 1801 on Nov 18, 2026.
 It starts from Kevin's Version 1 snapshot (`baklava-story-v1.zip`, taken Nov 18, 2026)
@@ -15,6 +15,22 @@ When a change is tested and approved here, it gets copied to the live system by 
 ---
 
 ## What changed in v2 (latest first)
+
+### v2.3, Nov 21, 2026: rewards changed from the dashboard, special treats
+- **Card settings (owner only).** Layer Card tab, "Card settings": the program's name,
+  how many visits fill a card (3 to 20), up to 5 rewards each on its own layer, whether
+  the "ready" text mentions the layer, and a switch to pause the program. Saved in the
+  backend (`cardSettings` action, Script Properties), used at once by every card, the
+  texts and the order page. Before: only by typing JSON into Script Properties.
+- **Order page panel follows the settings** (new public `card` action: program name,
+  size and rewards only, never customer data). Hidden when the program is paused.
+- **Special treat.** On any card: give one customer a one-off gift with a note
+  (birthday, sorry for the wait). Kept on the card, does not change the layers
+  (`treat` action, kind "treat" in the Rewards tab).
+- **History on each card**: the latest 8 entries, newest first: layers added by hand or at
+  the counter, layers taken back, rewards given, treats, and the count of picked-up orders.
+- Files: `backend/Code.gs` (publish a New version), new `dashboard/z19.js`,
+  `dashboard/index.html`, `order-page/index.html`.
 
 ### v2.2, Nov 21, 2026: The Layer Card, Counter, bake list
 A concept to show Tolgay, built so he can try it for real on the test copy.
@@ -176,9 +192,9 @@ Both sites are static, with no build step. On Vercel (Aldo's personal account,
 
 The dashboard is layered on purpose. `index.html` loads `s.css` and `x.css`, then
 `config.js`, then `j1.js` to `j4.js`, then the patch files `x.js`, `y.js`, `z.js`,
-`z2.js` to `z18.js`, and `j5.js` last. Later files override earlier code. The
+`z2.js` to `z19.js`, and `j5.js` last. Later files override earlier code. The
 comment at the top of each file says what it changes. Do not reorder the script
-tags. For a new change, add a new z file (next is `z19.js`) and load it before
+tags. For a new change, add a new z file (next is `z20.js`) and load it before
 `j5.js`, or edit the file that already owns that feature.
 
 Some values live in more than one place. The dashboard keeps its own `SLOT_CAP`
