@@ -1,4 +1,4 @@
-# Baklava Story order system, Version 2.3 (TEST COPY)
+# Baklava Story order system, Version 2.4 (TEST COPY)
 
 Version 2 is a **test copy** of the live system, made by Studio 1801 on Nov 18, 2026.
 It starts from Kevin's Version 1 snapshot (`baklava-story-v1.zip`, taken Nov 18, 2026)
@@ -15,6 +15,31 @@ When a change is tested and approved here, it gets copied to the live system by 
 ---
 
 ## What changed in v2 (latest first)
+
+### v2.4, Nov 21, 2026: Today screen, sample shop, polish
+- **New "Today" tab, the screen the dashboard opens on.** Five numbers on top (pickups
+  left and late, online orders to confirm, trays still to hand out, counter so far,
+  expected today; staff see rewards instead of money). Every pickup today in time order,
+  late ones first, each with one big button for the next step: Confirm, Ready (asks
+  first, texts the customer) or Picked up. On the side: orders waiting for a decision,
+  what to hand out today, customers with a Layer Card reward waiting, the counter, and
+  tomorrow's trays. Refreshes every minute. Uses the existing order actions.
+- **Sample shop for demos.** Sheet menu "Baklava Story (TEST) > Load the sample shop":
+  4 weeks of picked-up orders, today's pickups, 2 weeks booked, counter sales, Layer Cards
+  with rewards given, all dated around the day you run it. Run it right before a demo.
+  Test copy only (refuses once the owner has taken over). `tools/sample-data-preview.py`
+  is the same idea in Python, used for local screenshots.
+- **History: "Coffee and the Layer Card"** section: drinks, counter takings, share of
+  sales on a card, cards and regulars, rewards given, week by week, best sellers.
+- **Layer Card screen:** summary on top (customers with a card, regulars, visits per
+  customer, rewards waiting and given), rewards waiting listed first, everyone else by
+  visits with "Show all".
+- **Week board:** "Reward ready" tags only on orders still to come.
+- **Phone:** tabs scroll sideways instead of pushing the page wider.
+- Fixes: counter items with a comma in the name ("Baklava, 2 pieces") are counted right;
+  a screen whose data fails to load no longer retries in a loop.
+- Files: `backend/Code.gs` (publish a New version), new `dashboard/z20.js`,
+  `dashboard/z18.js`, `dashboard/index.html`.
 
 ### v2.3, Nov 21, 2026: rewards changed from the dashboard, special treats
 - **Card settings (owner only).** Layer Card tab, "Card settings": the program's name,
@@ -192,9 +217,9 @@ Both sites are static, with no build step. On Vercel (Aldo's personal account,
 
 The dashboard is layered on purpose. `index.html` loads `s.css` and `x.css`, then
 `config.js`, then `j1.js` to `j4.js`, then the patch files `x.js`, `y.js`, `z.js`,
-`z2.js` to `z19.js`, and `j5.js` last. Later files override earlier code. The
+`z2.js` to `z20.js`, and `j5.js` last. Later files override earlier code. The
 comment at the top of each file says what it changes. Do not reorder the script
-tags. For a new change, add a new z file (next is `z20.js`) and load it before
+tags. For a new change, add a new z file (next is `z21.js`) and load it before
 `j5.js`, or edit the file that already owns that feature.
 
 Some values live in more than one place. The dashboard keeps its own `SLOT_CAP`

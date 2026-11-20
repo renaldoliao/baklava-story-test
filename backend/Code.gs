@@ -1151,7 +1151,7 @@ function onOpen() {
   testGuard_();
   rebuildIfDirty_();
   try { ensureMessages_(); } catch (e) { /* the Messages tab is created on the next open */ }
-  SpreadsheetApp.getUi().createMenu('Baklava Story (TEST)').addItem('Refresh reports', 'refreshReports').addItem('Tidy the Orders tab', 'menuTidyOrders').addSeparator().addItem('Add or reset a login', 'menuAddLogin').addItem('Remove a login', 'menuRemoveLogin').addItem('List logins', 'menuListLogins').addItem('Set the join code', 'menuSetJoinCode').addSeparator().addItem('Clear all test data', 'menuClearTestData').addSeparator().addItem('Texts: check setup', 'menuTextSetup').addItem('Texts: send a test text', 'menuTextTest').addItem('Texts: turn on retries', 'menuTextRetriesOn').addItem('Texts: show the log', 'menuShowTextLog').addToUi();
+  SpreadsheetApp.getUi().createMenu('Baklava Story (TEST)').addItem('Refresh reports', 'refreshReports').addItem('Tidy the Orders tab', 'menuTidyOrders').addSeparator().addItem('Load the sample shop (for demos)', 'menuLoadSample').addSeparator().addItem('Add or reset a login', 'menuAddLogin').addItem('Remove a login', 'menuRemoveLogin').addItem('List logins', 'menuListLogins').addItem('Set the join code', 'menuSetJoinCode').addSeparator().addItem('Clear all test data', 'menuClearTestData').addSeparator().addItem('Texts: check setup', 'menuTextSetup').addItem('Texts: send a test text', 'menuTextTest').addItem('Texts: turn on retries', 'menuTextRetriesOn').addItem('Texts: show the log', 'menuShowTextLog').addToUi();
 }
 function refreshReports() { rebuild_(); }
 
@@ -1557,6 +1557,111 @@ function counterSale_(who, b) {
   }
   return { ok: true, id: id, total: total, card: card, counter: counterData_(1) };
 }
+
+// ---------------------------------------------------------------------------------------------
+// v2.4 Sample shop for demos (TEST copy only). Menu: Baklava Story (TEST) > Load the sample shop.
+// Fills the Sheet with a believable, busy Baklava Story around today's date: 4 weeks of picked-up
+// orders, today's pickups, the next 2 weeks booked, counter sales, Layer Cards with rewards given.
+// Run it again right before a demo so "today" always has pickups. Logins, the menu and settings stay.
+// ---------------------------------------------------------------------------------------------
+function menuLoadSample() {
+  const ui = SpreadsheetApp.getUi();
+  if (claimed_()) { ui.alert('Not loaded', 'The owner has already taken this over, so real orders may be in here.', ui.ButtonSet.OK); return; }
+  const a = ask_('Load the sample shop', 'This replaces every order, counter sale, Layer Card entry and text log with sample data dated around today. Logins, products and settings stay. Type SAMPLE to go ahead.');
+  if (a === null || String(a).trim().toUpperCase() !== 'SAMPLE') { if (a !== null) ui.alert('Nothing was changed.'); return; }
+  const n = loadSample_();
+  ui.alert('Sample shop loaded', n.orders + ' orders, ' + n.counter + ' counter sales and ' + n.rewards + ' Layer Card entries, dated around ' + n.today + '. Reload the dashboard.', ui.ButtonSet.OK);
+}
+function loadSample_() {
+  let seed = 1801; const rnd = function () { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const pick = function (a) { return a[Math.floor(rnd() * a.length)]; };
+  const today = shopNow_().date, nowT = shopNow_().time;
+  const PR = { SP: 27.5, SW: 27.5, MP: 74.5, MW: 74.5, LP: 107.5, LW: 107.5 };
+  const SL = ['09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '17:45'];
+  const FN = ['Maya', 'Daniel', 'Priya', 'Marcus', 'Elena', 'Jonah', 'Sofia', 'Kenji', 'Aisha', 'Lucas', 'Hannah', 'Omar', 'Grace', 'Diego', 'Leila', 'Ethan', 'Nadia', 'Theo', 'Camila', 'Ravi', 'Zoe', 'Samir', 'Ivy', 'Mateo', 'Chloe', 'Arjun', 'Noor', 'Felix', 'Rosa', 'Tariq', 'Lena', 'Andre', 'Mina', 'Caleb', 'Yasmin', 'Owen'];
+  const LN = ['Chen', 'Rivera', 'Patel', 'Kim', 'Nguyen', 'Haddad', 'Okafor', 'Brooks', 'Sato', 'Levine', 'Moreno', 'Shah', 'Fischer', 'Aydin', 'Lopez', 'Park', 'Walsh', 'Demir', 'Costa', 'Reyes', 'Kaplan', 'Bauer', 'Yilmaz', 'Ortiz'];
+  const EX = ['206', '282', '386', '431', '522', '648', '730', '819', '902'];
+  const people = [];
+  for (let i = 0; i < 70; i++) people.push({ name: pick(FN) + ' ' + pick(LN), phone: '(415) ' + pick(EX) + '-' + ('000' + (1000 + (i * 37) % 9000)).slice(-4) });
+  const regs = people.slice(0, 12), others = people.slice(12);
+  const NOTES = ['Gift box please', 'Less sweet if possible', 'Birthday, add a candle', 'Office party', 'Call when outside', 'Extra syrup on the side', 'For my mom', 'Picking up for a friend'];
+  const items = function () {
+    const r = rnd();
+    if (r < .45) return [[pick(['SP', 'SW']), pick([1, 1, 1, 2])]];
+    if (r < .75) { const a = [[pick(['MP', 'MW']), 1]]; if (rnd() < .3) a.push([pick(['SP', 'SW']), 1]); return a; }
+    if (r < .9) return [[pick(['LP', 'LW']), 1]];
+    return [[pick(['MP', 'LP']), pick([1, 2])], [pick(['SW', 'MW']), 1]];
+  };
+  const rows = [], closed = {};
+  let n = 0;
+  for (let off = -27; off <= 15; off++) {
+    const d = addDaysYmd_(today, off), dow = dayOfWeek_(d);
+    if (dow === 0) continue;
+    let base = [0, 5, 5, 6, 6, 8, 11][dow];
+    if (off > 0) base = Math.max(2, Math.round(base * (off <= 6 ? .75 : .35)));
+    const cnt = Math.max(1, base + Math.floor(rnd() * 5) - 2), slots = SL.slice().sort(function () { return rnd() - .5; }).slice(0, cnt).sort();
+    slots.forEach(function (t) {
+      const p = rnd() < .45 ? pick(regs) : pick(others), it = items(), web = rnd() < .75;
+      let st = 'new', paid = 'none', ready = '';
+      if (off < 0) { st = rnd() < .03 ? 'cancelled' : 'picked'; paid = st === 'picked' ? 'paid' : 'none'; }
+      else if (off === 0) {
+        if (t < addMin_(nowT, -90)) { st = 'picked'; paid = 'paid'; }
+        else if (t < addMin_(nowT, 15)) ready = today + ' ' + addMin_(t, -20);
+        else if (web && rnd() < .3) st = 'pending';
+      } else if (web && off <= 4 && rnd() < .18) st = 'pending';
+      n++;
+      const snap = {}; it.forEach(function (x) { snap[x[0]] = PR[x[0]]; });
+      rows.push({ id: (web ? 'w' : 'h') + ('00000' + n.toString(16)).slice(-6) + 's', date: d, time: t, name: p.name, phone: p.phone,
+        items: it.map(function (x) { return x[1] + 'x' + x[0]; }).join(', '), note: rnd() < .15 ? pick(NOTES) : '', paid: paid, status: st, sample: '',
+        source: web ? 'web' : 'hand', seen: st === 'pending' ? '' : 'yes', optin: web && rnd() < .8 ? 'yes' : '', ready: ready, prices: JSON.stringify(snap) });
+    });
+  }
+  const menu = counterMenu_(), W = [5, 2, 3, 4, 3, 2, 3], counter = [], rewards = [];
+  const wpick = function () { let t = 0; const tot = W.slice(0, menu.length).reduce(function (s, x) { return s + x; }, 0), r = rnd() * tot; for (let i = 0; i < menu.length; i++) { t += W[i] || 1; if (r <= t) return menu[i]; } return menu[0]; };
+  let cid = 0;
+  for (let off = -13; off <= 0; off++) {
+    const d = addDaysYmd_(today, off); if (dayOfWeek_(d) === 0) continue;
+    const k = off < 0 ? 9 + Math.floor(rnd() * 10) : 6;
+    for (let j = 0; j < k; j++) {
+      let t = ('0' + (9 + Math.floor(rnd() * 9))).slice(-2) + ':' + ('0' + Math.floor(rnd() * 60)).slice(-2);
+      if (off === 0) { t = addMin_('09:30', Math.floor(rnd() * Math.max(10, tdiff_('09:30', nowT)))); if (t > nowT) continue; }
+      const lines = [[wpick(), 1]]; if (rnd() < .3) lines.push([wpick(), 1]);
+      const tot = lines.reduce(function (s, l) { return s + l[0].price * l[1]; }, 0);
+      const r = rnd(), who = r < .35 ? pick(regs) : r < .55 ? pick(people.slice(12, 40)) : null;
+      cid++; const id = 'c' + ('0000000' + cid.toString(16)).slice(-8);
+      counter.push([d + ' ' + t, d, lines.map(function (l) { return l[1] + ' x ' + l[0].name; }).join(', '), tot.toFixed(2), who ? who.phone : '', who ? who.name : '', 'sample', id]);
+      if (who) rewards.push([d + ' ' + t, who.phone, who.name, 'counter', '1', 'Counter sale ' + id, 'sample']);
+    }
+  }
+  // most earned rewards were already given
+  const visits = {};
+  rows.forEach(function (o) { if (o.status === 'picked') (visits[o.phone] = visits[o.phone] || []).push([o.date + ' ' + o.time, o.name]); });
+  rewards.forEach(function (r) { (visits[r[1]] = visits[r[1]] || []).push([r[0], r[2]]); });
+  const cfg = rewardCfg_(), yday = addDaysYmd_(today, -1);
+  Object.keys(visits).forEach(function (ph) {
+    visits[ph].sort(function (a, b) { return a[0] < b[0] ? -1 : 1; }).forEach(function (v, i) {
+      const pos = ((i + 1) % cfg.size) || cfg.size, st = cfg.steps.filter(function (s) { return s.at === pos; })[0];
+      if (st && v[0] < yday && rnd() < .8) rewards.push([v[0], ph, v[1], 'redeem', '1', 'layer ' + st.at, 'sample']);
+    });
+  });
+  if (regs[2]) rewards.push([addDaysYmd_(today, -3) + ' 13:20', regs[2].phone, regs[2].name, 'treat', '1', 'Birthday, 2 pieces on us', 'sample']);
+  if (regs[5]) rewards.push([addDaysYmd_(today, -1) + ' 16:05', regs[5].phone, regs[5].name, 'treat', '1', 'Sorry for the wait, coffee on us', 'sample']);
+  rewards.sort(function (a, b) { return a[0] < b[0] ? -1 : 1; }); counter.sort(function (a, b) { return a[0] < b[0] ? -1 : 1; });
+  // write
+  const ss = SpreadsheetApp.getActive(), osh = sheet_();
+  if (osh.getLastRow() > 1) osh.getRange(2, 1, osh.getLastRow() - 1, osh.getLastColumn()).clearContent();
+  rows.sort(function (a, b) { return (a.date + a.time) < (b.date + b.time) ? -1 : 1; });
+  if (rows.length) osh.getRange(2, 1, rows.length, COLS.length).setNumberFormat('@').setValues(rows.map(function (o) { return COLS.map(function (c) { return o[c] == null ? '' : String(o[c]); }); }));
+  [[rewardSheet_(), rewards, RCOLS.length], [counterSheet_(), counter, CCOLS.length]].forEach(function (x) {
+    const sh = x[0]; if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, x[2]).clearContent();
+    if (x[1].length) sh.getRange(2, 1, x[1].length, x[2]).setNumberFormat('@').setValues(x[1]);
+  });
+  const ts = ss.getSheetByName('Texts'); if (ts && ts.getLastRow() > 1) ts.getRange(2, 1, ts.getLastRow() - 1, ts.getLastColumn()).clearContent();
+  try { rebuild_(); } catch (e) { /* reports refresh with Refresh reports */ }
+  return { orders: rows.length, counter: counter.length, rewards: rewards.length, today: today };
+}
+function addMin_(t, m) { const p = String(t).split(':'), x = Math.max(0, Math.min(23 * 60 + 59, +p[0] * 60 + +p[1] + m)); return ('0' + Math.floor(x / 60)).slice(-2) + ':' + ('0' + (x % 60)).slice(-2); }
+function tdiff_(a, b) { const p = a.split(':'), q = b.split(':'); return (+q[0] * 60 + +q[1]) - (+p[0] * 60 + +p[1]); }
 
 function doGet(e) {
   testGuard_();

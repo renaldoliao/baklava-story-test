@@ -20,7 +20,9 @@
    +'.lc .btn{min-height:48px;white-space:nowrap}'
    +'.lc .hint{font-size:14px;color:var(--ink2);margin:8px 0 0}'
    +'.lc .find{margin:0 0 10px}'
-   +'.lc .card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 16px;align-items:start;padding:16px 0;border-bottom:1px solid var(--rule2)}'
+   +'.lc .card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;align-items:center;padding:12px 0;border-bottom:1px solid var(--rule2)}'
+   +'.lc .grp{font:700 12px/1 var(--f-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--ink2);margin:22px 0 4px}'
+   +'.lc .showall{margin:14px 0 0}'
    +'.lc .card b.nm{font-size:18px}.lc .ph{color:var(--ink2);font-size:15px;margin-left:8px}'
    +'.lc .layers{display:flex;gap:4px;margin:10px 0 4px;align-items:flex-end}'
    +'.lc .layers i{display:block;width:26px;height:10px;border:1.5px solid var(--ink);border-radius:2px;position:relative}'
@@ -95,10 +97,20 @@ function layersHtml(){
   var q=lc.q.trim().toLowerCase(),qd=rawDigits(q),list=lc.cards.filter(function(c){
     if(!q)return true;return (qd.length>=3&&c.key.indexOf(qd)>=0)||String(c.name).toLowerCase().indexOf(q)>=0});
   var ready=lc.cards.filter(function(c){return c.ready>0}).length;
-  return head+'<div class="sum"><div><b>'+lc.cards.length+'</b>cards</div><div><b>'+ready+'</b>with a reward ready</div><div><b>'
-   +lc.cards.reduce(function(s,c){return s+c.rewards.reduce(function(t,r){return t+r.given},0)},0)+'</b>rewards given</div></div>'
+  var regs=lc.cards.filter(function(c){return c.layers>=3}).length,given=lc.cards.reduce(function(s,c){return s+c.rewards.reduce(function(t,r){return t+r.given},0)},0);
+  var visits=lc.cards.reduce(function(s,c){return s+c.layers},0);
+  return head+'<div class="sum"><div><b>'+lc.cards.length+'</b>customers with a card</div><div><b>'+regs+'</b>regulars, 3+ visits</div><div><b>'+(lc.cards.length?(visits/lc.cards.length).toFixed(1):0)+'</b>visits per customer</div><div><b>'+ready+'</b>with a reward waiting</div><div><b>'+given+'</b>rewards given</div></div>'
    +'<input class="find" id="lc-find" type="search" placeholder="Search name or phone" value="'+esc(lc.q)+'" autocomplete="off">'
-   +(list.length?list.map(lcCardHtml).join(''):'<p class="empty">'+(q?'No card matches that.':'No cards yet. A card starts when an order is picked up, or with a counter sale.')+'</p>')+'</div>';
+   +(list.length?lcListHtml(list,!!q):'<p class="empty">'+(q?'No card matches that.':'No cards yet. A card starts when an order is picked up, or with a counter sale.')+'</p>')+'</div>';
+}
+function lcListHtml(list,searching){
+  if(searching)return list.map(lcCardHtml).join('');
+  var ready=list.filter(function(c){return c.ready>0}),rest=list.filter(function(c){return !c.ready}).sort(function(a,b){return b.layers-a.layers||(b.last>a.last?1:-1)});
+  var max=lc.max||12,h='';
+  if(ready.length)h+='<div class="grp">Reward waiting ('+ready.length+')</div>'+ready.map(lcCardHtml).join('');
+  h+='<div class="grp">Everyone else, most visits first ('+rest.length+')</div>'+rest.slice(0,max).map(lcCardHtml).join('');
+  if(rest.length>max)h+='<button class="link showall" data-act="lcmore">Show all '+rest.length+'</button>';
+  return h;
 }
 function lcCardHtml(c){
   var today=key(new Date()),handToday=(c.log||[]).some(function(l){return l.kind==='stamp'&&String(l.when).slice(0,10)===today});
@@ -126,7 +138,7 @@ function counterHtml(){
   var k=lcKey(ct.phone),c=k.length>=10&&lc.byKey[k];
   var peek=k.length>=10?'<div class="peek">'+(c?'<b>'+esc(c.name||'')+'</b> '+lcBar(c)+lcSummary(c)+' This sale adds a layer.'+lcReadyHtml(c):'New customer: this sale starts their '+esc(lc.name.replace(/^the /i,''))+'.')+'</div>':'';
   var todays=ct.sales.filter(function(s){return s.date===ct.today}).slice().reverse();
-  var drinks=0;todays.forEach(function(s){String(s.items).split(', ').forEach(function(p){var m=p.match(/^(\d+) x (.+)$/);if(m&&!/baklava|piece/i.test(m[2]))drinks+=+m[1]})});
+  var drinks=0;todays.forEach(function(s){String(s.items).split(/, (?=\d+ x )/).forEach(function(p){var m=p.match(/^(\d+) x (.+)$/);if(m&&!/baklava|piece/i.test(m[2]))drinks+=+m[1]})});
   return '<div class="lc book hist"><h2>Counter</h2><p class="sub">Tap what the customer is buying, take payment in Square as usual, then save it here. Add their phone number and the visit goes on their '+esc(lc.name.replace(/^the /i,''))+'.</p>'
    +'<div class="tiles">'+tiles+'</div>'
    +'<div class="box ticket">'+(items.length?ticket+'<div class="tot"><span>Total</span><span class="num">'+money(ctTotal())+'</span></div>':'<p class="empty" style="padding:0">Tap an item above to start a sale.</p>')
@@ -149,11 +161,12 @@ renderBoard=function(){
   $('#view').innerHTML=state.tab==='layers'?layersHtml():counterHtml();
   Object.keys(keep).forEach(function(id){var e=document.getElementById(id);if(e&&!e.value)e.value=keep[id]});
   if(f){var e=document.getElementById(f);if(e){e.focus();try{if(e.type!=='tel'&&e.value)e.setSelectionRange(e.value.length,e.value.length)}catch(x){}}}
-  if(!lc.loaded)loadLayers();
-  if(state.tab==='counter'&&!ct.loaded)loadCounter();
+  var nw=Date.now();
+  if(!lc.loaded&&nw-(lc.tried||0)>15000){lc.tried=nw;loadLayers()}
+  if(state.tab==='counter'&&!ct.loaded&&nw-(ct.tried||0)>15000){ct.tried=nw;loadCounter()}
 };
 var _switchTab18=switchTab;
-switchTab=function(t){if(t==='layers'||t==='counter'){lc.loaded=false;if(t==='counter')ct.loaded=false}return _switchTab18.apply(this,arguments)};
+switchTab=function(t){if(t==='layers'||t==='counter'){lc.loaded=false;lc.tried=0;if(t==='counter'){ct.loaded=false;ct.tried=0}}return _switchTab18.apply(this,arguments)};
 
 document.addEventListener('input',function(ev){
   var id=ev.target.id;
@@ -167,8 +180,9 @@ function lcPost(body){
 }
 document.addEventListener('click',function(ev){
   var t=ev.target.closest&&ev.target.closest('[data-act^="lc"],[data-act^="ct"]');if(!t)return;
-  var a=t.dataset.act;if(!/^(lcadd|lcplus|lcundo|lcgive|ctadd|ctminus|ctsave)$/.test(a))return;
+  var a=t.dataset.act;if(!/^(lcadd|lcplus|lcundo|lcgive|ctadd|ctminus|ctsave|lcmore)$/.test(a))return;
   ev.stopPropagation();
+  if(a==='lcmore'){lc.max=1e9;renderBoard();return}
   if(a==='ctadd'){ct.ticket[t.dataset.n]=Math.min(20,(ct.ticket[t.dataset.n]||0)+1);renderBoard();return}
   if(a==='ctminus'){ct.ticket[t.dataset.n]=Math.max(0,(ct.ticket[t.dataset.n]||0)-1);renderBoard();return}
   if(a==='ctsave'){
@@ -210,7 +224,7 @@ function tagRewards(){
   if(state.tab!=='week'||!lc.loaded)return;
   document.querySelectorAll('#view .ent button.body[data-id]').forEach(function(b){
     if(b.querySelector('.rwtag'))return;
-    var o=orders.find(function(x){return x.id===b.dataset.id});if(!o||o.status==='cancelled')return;
+    var o=orders.find(function(x){return x.id===b.dataset.id});if(!o||o.status==='cancelled'||o.status==='picked'||o.date<key(new Date()))return;
     var c=lc.byKey[lcKey(o.phone)];if(!c||!c.ready)return;
     var r=c.rewards.filter(function(x){return x.ready>0})[0];
     var nm=b.querySelector('.en')||b;
