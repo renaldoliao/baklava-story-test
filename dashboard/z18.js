@@ -63,7 +63,7 @@ function lcSet(j){
 }
 function lcPut(c){if(!c)return;var i=lc.cards.findIndex(function(x){return x.key===c.key});if(i>=0)lc.cards[i]=c;else lc.cards.unshift(c);lc.byKey[c.key]=c}
 function loadLayers(){
-  if(lc.loading||!configured)return Promise.resolve();lc.loading=true;
+  if(lc.loading||!configured||!signedIn())return Promise.resolve();lc.loading=true;
   return fetch(API_URL+'?action=rewards&token='+encodeURIComponent(TOKEN)).then(function(r){return r.json()}).then(function(j){
     if(j.error)throw new Error(j.error);lcSet(j);
   }).catch(function(e){toast(String(e.message||e))}).then(function(){lc.loading=false;
@@ -124,7 +124,7 @@ function lcCardHtml(c){
 /* ---------- 2. Counter screen ---------- */
 var ct={menu:[],sales:[],today:'',loaded:false,loading:false,ticket:{},phone:'',name:'',busy:false};
 function loadCounter(){
-  if(ct.loading||!configured)return;ct.loading=true;
+  if(ct.loading||!configured||!signedIn())return;ct.loading=true;
   fetch(API_URL+'?action=counter&days=7&token='+encodeURIComponent(TOKEN)).then(function(r){return r.json()}).then(function(j){
     if(j.error)throw new Error(j.error);ct.menu=j.menu||[];ct.sales=j.sales||[];ct.today=j.today;ct.loaded=true;
   }).catch(function(e){toast(String(e.message||e))}).then(function(){ct.loading=false;if(state.tab==='counter')renderBoard()});
@@ -232,8 +232,8 @@ function tagRewards(){
   });
 }
 /* load the cards once at start for the tags, then refresh with the board every few minutes */
-setTimeout(function(){if(configured)loadLayers()},1500);
-setInterval(function(){if(configured&&!document.hidden&&state.tab==='week'){lc.loading=false;loadLayers()}},300000);
+setTimeout(function(){if(configured&&signedIn())loadLayers()},1500);
+setInterval(function(){if(configured&&signedIn()&&!document.hidden&&state.tab==='week'){lc.loading=false;loadLayers()}},300000);
 
 /* ---------- 4. Bake list: confirmed orders only, waiting ones listed apart ---------- */
 var _bakeHtml18=bakeHtml;

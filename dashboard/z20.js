@@ -194,7 +194,7 @@ loadCounter=function(){_loadCounter20();var w=setInterval(function(){if(!ct.load
 var _switchTab20=switchTab;
 switchTab=function(t){if(t==='today'){ct.loaded=false;lc.loaded=false;ct.tried=0;lc.tried=0}return _switchTab20.apply(this,arguments)};
 /* keep the clock and the "in 12 min" labels fresh */
-setInterval(function(){if(state.tab==='today'&&!state.sheet&&$('#pop').hidden&&!document.hidden)renderBoard()},60000);
+setInterval(function(){if(signedIn()&&state.tab==='today'&&!state.sheet&&$('#pop').hidden&&!document.hidden)renderBoard()},60000);
 
 document.addEventListener('click',function(ev){
   var t=ev.target.closest&&ev.target.closest('[data-act="tdready"],[data-act="tdjump"],[data-act="tdlayers"]');if(!t)return;
@@ -207,7 +207,7 @@ document.addEventListener('click',function(ev){
 /* History: a "Coffee and the Layer Card" section, before Regulars. Last 8 weeks of counter sales. */
 var hc={sales:[],loaded:false,loading:false};
 function loadHistCounter(){
-  if(hc.loading||!configured||Date.now()-(hc.tried||0)<30000)return;hc.loading=true;hc.tried=Date.now();
+  if(hc.loading||!configured||!signedIn()||Date.now()-(hc.tried||0)<30000)return;hc.loading=true;hc.tried=Date.now();
   fetch(API_URL+'?action=counter&days=56&token='+encodeURIComponent(TOKEN)).then(function(r){return r.json()}).then(function(j){
     if(j.error)throw new Error(j.error);hc.sales=j.sales||[];hc.loaded=true;
   }).catch(function(){}).then(function(){hc.loading=false;if(state.tab==='history'&&hc.loaded)renderBoard()});

@@ -43,6 +43,9 @@ When a change is tested and approved here, it gets copied to the live system by 
   open day's pickups and bake list, with a one-line recap of today. Before 9:30 it shows
   the day ahead without "late" warnings. The 15-minute "is it ready?" prompt also counts
   in San Francisco time.
+- **Fixed: the sign in page kept reloading** while typing. The Layer Card, Counter and History
+  loaders asked the backend for data before anyone was signed in; the answer "please sign in"
+  made the page reload. They now wait until someone is signed in.
 - Files: `backend/Code.gs` (publish a New version), new `dashboard/z20.js`,
   `dashboard/z18.js`, `dashboard/index.html`.
 
