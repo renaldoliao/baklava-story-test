@@ -63,7 +63,13 @@
 })();
 state.tab='today';
 
-function tdNowMin(){var n=new Date();return n.getHours()*60+n.getMinutes()}
+/* The shop runs on San Francisco time, whatever the device clock says (a demo from Jakarta, an iPad set wrong). */
+function tdShop(){
+  var p={};new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).forEach(function(x){p[x.type]=x.value});
+  var k=p.year+'-'+p.month+'-'+p.day,h=+p.hour%24,m=+p.minute;
+  return {k:k,d:fromKey(k),h:h,m:m,min:h*60+m};
+}
+function tdNextOpen(d){var n=addDays(d,1);if(n.getDay()===0)n=addDays(n,1);return n}
 function tdMin(t){var p=String(t).split(':');return +p[0]*60+ +p[1]}
 function tdMoney(o){try{return total(o)}catch(e){return 0}}
 function tdChips(o,c){
@@ -82,6 +88,7 @@ function tdRow(o,now,isToday){
   var when=!isToday?'':o.status==='picked'?'':m>59?'in '+Math.floor(m/60)+' h '+(m%60?m%60+' min':''):m>0?'in '+m+' min':m>=-10?'now':Math.round(-m)+' min late';
   var btn;
   if(o.status==='pending')btn='<button class="btn" data-act="confirm" data-id="'+o.id+'">Confirm</button>';
+  else if(!isToday&&o.status!=='picked')btn='<button class="link" data-act="edit" data-id="'+o.id+'">Edit order</button>';
   else if(o.status==='picked')btn='<button class="link" data-act="cross" data-id="'+o.id+'">Undo</button>';
   else if(!o.ready)btn='<button class="btn" data-act="tdready" data-id="'+o.id+'">Ready</button>';
   else btn='<button class="btn" data-act="cross" data-id="'+o.id+'">Picked up</button>';
@@ -98,14 +105,18 @@ function tdBake(list){
   return {keys:keys,by:by,total:keys.reduce(function(s,k){return s+by[k]},0)};
 }
 function todayHtml(){
-  var d=new Date(),tk=key(d),now=tdNowMin(),sun=d.getDay()===0,shut=typeof shutDays!=='undefined'&&shutDays[tk];
+  var S=tdShop(),todayK=S.k,sunNow=S.d.getDay()===0,after=S.min>=18*60,before=S.min<9*60+30;
+  var mode=sunNow||after?'next':before?'before':'open';
+  var d=mode==='next'?tdNextOpen(S.d):S.d,tk=key(d),now=mode==='open'?S.min:-1e9;
+  var sun=false,shut=typeof shutDays!=='undefined'&&shutDays[tk];
   var all=onDay(tk).filter(function(o){return o.status!=='cancelled'}).sort(function(a,b){return a.time<b.time?-1:1});
   var open=all.filter(function(o){return o.status!=='picked'}),done=all.filter(function(o){return o.status==='picked'});
   var pendingAll=orders.filter(function(o){return o.status==='pending'&&o.date>=tk}).sort(function(a,b){return (a.date+a.time)<(b.date+b.time)?-1:1});
   var confirmed=all.filter(function(o){return o.status!=='pending'}),bake=tdBake(confirmed.filter(function(o){return o.status!=='picked'}));
-  var nd=addDays(d,1);if(nd.getDay()===0)nd=addDays(nd,1);var nk=key(nd);
+  var nd=tdNextOpen(d),nk=key(nd);
   var tom=onDay(nk).filter(function(o){return o.status!=='cancelled'}),tomBake=tdBake(tom.filter(function(o){return o.status!=='pending'}));
-  var ctToday=(ct.sales||[]).filter(function(s){return s.date===ct.today||s.date===tk});
+  var ctToday=(ct.sales||[]).filter(function(s){return s.date===todayK});
+  var todayAll=onDay(todayK).filter(function(o){return o.status!=='cancelled'}),todayDone=todayAll.filter(function(o){return o.status==='picked'});
   var drinks=0;ctToday.forEach(function(s){String(s.items).split(/, (?=\d+ x )/).forEach(function(p){var m=p.match(/^(\d+) x (.+)$/);if(m&&!/baklava|piece/i.test(m[2]))drinks+=+m[1]})});
   var ctSum=ctToday.reduce(function(s,x){return s+x.total},0);
   var expect=all.reduce(function(s,o){return s+tdMoney(o)},0)+ctSum;
@@ -113,31 +124,33 @@ function todayHtml(){
   var rewardsToday=lc.loaded?all.filter(function(o){var c=lc.byKey[lcKey(o.phone)];return c&&c.ready&&o.status!=='picked'}):[];
   var nextUp=open.filter(function(o){return tdMin(o.time)-now>=-10});
 
-  var h='<div class="td"><div class="top"><div><h2>Today</h2><div class="dt">'+fmtLong(d)+'</div></div>'
-   +'<div class="clock num" id="td-clock">'+fmtT(String(d.getHours())+':'+pad(d.getMinutes()))+'<small>Open 9:30 am to 6 pm, last pickup 5:45 pm</small></div></div>';
-  if(sun)h+='<div class="closed">Closed on Sundays. Monday at a glance is below.</div>';
-  else if(shut)h+='<div class="closed">This day is closed to online orders. Orders already booked are still listed.</div>';
+  var h='<div class="td"><div class="top"><div><h2>'+(mode==='next'?'Next up':'Today')+'</h2><div class="dt">'+fmtLong(d)+'</div></div>'
+   +'<div class="clock num" id="td-clock">'+fmtT(S.h+':'+pad(S.m))+'<small>San Francisco time. Open 9:30 am to 6 pm, last pickup 5:45 pm</small></div></div>';
+  if(mode==='next')h+='<div class="closed">'+(sunNow?'Closed today, Sunday.':'The shop is closed for today.')+' This is the prep for '+fmtLong(d).split(',')[0]+'.'
+    +(!sunNow&&todayAll.length?' Today: '+todayDone.length+' of '+todayAll.length+' orders picked up'+(isStaff()?'':', '+money(todayDone.reduce(function(s,o){return s+tdMoney(o)},0))+' from orders, '+money(ctToday.reduce(function(s,x){return s+x.total},0))+' at the counter')+'.':'')+'</div>';
+  else if(mode==='before')h+='<div class="closed">Opens at 9:30 am. Here is the day ahead.</div>';
+  if(shut)h+='<div class="closed">This day is closed to online orders. Orders already booked are still listed.</div>';
 
   h+='<div class="kpis">'
    +'<button class="kpi'+(late.length?' hot':'')+'" data-act="tdjump" data-to="td-pickups"><b class="num">'+open.filter(function(o){return o.status!=='pending'}).length+'</b><span>pickups left'+(done.length?', '+done.length+' picked up':'')+(late.length?'<br><b style="font:inherit;display:inline">'+late.length+' late</b>':'')+'</span></button>'
    +'<button class="kpi'+(pendingAll.length?' hot':'')+'" data-act="tdjump" data-to="td-confirm"><b class="num">'+pendingAll.length+'</b><span>online '+(pendingAll.length===1?'order':'orders')+' to confirm</span></button>'
-   +'<button class="kpi" data-act="tdjump" data-to="td-bake"><b class="num">'+bake.total+'</b><span>trays still to hand out today</span></button>'
+   +'<button class="kpi" data-act="tdjump" data-to="td-bake"><b class="num">'+bake.total+'</b><span>trays to hand out'+(mode==='next'?'':' today')+'</span></button>'
    +'<button class="kpi" data-act="tab" data-t="counter"><b class="num">'+(isStaff()?drinks:money(ctSum))+'</b><span>at the counter'+(isStaff()?' (drinks)':', '+drinks+' drinks')+'</span></button>'
-   +(isStaff()?'<div class="kpi"><b class="num">'+rewardsToday.length+'</b><span>rewards to give today</span></div>':'<div class="kpi"><b class="num">'+money(expect)+'</b><span>expected today, orders and counter</span></div>')
+   +(isStaff()?'<div class="kpi"><b class="num">'+rewardsToday.length+'</b><span>rewards to give today</span></div>':'<div class="kpi"><b class="num">'+money(expect)+'</b><span>expected '+(mode==='next'?fmtLong(d).split(',')[0]:'today')+', orders and counter</span></div>')
    +'</div><div class="cols"><div>';
 
-  h+='<div class="panel" id="td-pickups"><h3>Pickups today <small>'+all.length+' '+(all.length===1?'order':'orders')+'</small></h3>';
-  if(!all.length)h+='<p class="empty">'+(sun?'No pickups on Sundays.':'No pickups booked for today yet.')+'</p>';
+  h+='<div class="panel" id="td-pickups"><h3>Pickups '+(mode==='next'?fmtLong(d).split(',')[0]:'today')+' <small>'+all.length+' '+(all.length===1?'order':'orders')+'</small></h3>';
+  if(!all.length)h+='<p class="empty">'+(sun?'No pickups on Sundays.':'No pickups booked yet.')+'</p>';
   else{
     var lateL=open.filter(function(o){return o.status!=='pending'&&tdMin(o.time)-now<-10});
-    if(lateL.length)h+='<div class="sec">Late, not picked up yet</div>'+lateL.map(function(o){return tdRow(o,now,true)}).join('');
-    if(nextUp.length)h+='<div class="sec">Coming up</div>'+nextUp.map(function(o){return tdRow(o,now,true)}).join('');
+    if(lateL.length)h+='<div class="sec">Late, not picked up yet</div>'+lateL.map(function(o){return tdRow(o,now,mode==='open')}).join('');
+    if(nextUp.length)h+='<div class="sec">Coming up</div>'+nextUp.map(function(o){return tdRow(o,now,mode==='open')}).join('');
     var pendLate=open.filter(function(o){return o.status==='pending'&&tdMin(o.time)-now<-10});
     if(pendLate.length)h+='<div class="sec">Never confirmed</div>'+pendLate.map(function(o){return tdRow(o,now,true)}).join('');
     if(done.length)h+='<div class="sec">Picked up</div>'+done.slice().reverse().map(function(o){return tdRow(o,now,true)}).join('');
   }
   h+='</div>';
-  h+='<div class="panel"><h3>'+(sun?'Monday':'Tomorrow')+', '+fmtShort(nd)+' <small>'+tom.length+' '+(tom.length===1?'order':'orders')+', '+tomBake.total+' trays confirmed</small></h3>'
+  h+='<div class="panel"><h3>'+(mode==='next'?'After that':'Tomorrow')+', '+fmtShort(nd)+' <small>'+tom.length+' '+(tom.length===1?'order':'orders')+', '+tomBake.total+' trays confirmed</small></h3>'
    +(tomBake.keys.length?tomBake.keys.map(function(k){return '<div class="li"><span>'+esc(k)+'</span><b class="n num">'+tomBake.by[k]+'</b></div>'}).join(''):'<p class="empty">Nothing confirmed yet.</p>')
    +'<div class="foot"><button class="link" data-act="bake" data-d="'+nk+'">Open the bake list</button></div></div>';
   h+='</div><div>';
@@ -147,9 +160,9 @@ function todayHtml(){
      +(pendingAll.length>5?'<div class="foot">'+(pendingAll.length-5)+' more on the <button class="link" data-act="tab" data-t="week">Week board</button></div>':'')
     :'<p class="empty">Nothing to confirm. New online orders show up here.</p>')+'</div>';
 
-  h+='<div class="panel" id="td-bake"><h3>Hand out today <small>confirmed, not picked up</small></h3>'
+  h+='<div class="panel" id="td-bake"><h3>Hand out '+(mode==='next'?fmtLong(d).split(',')[0]:'today')+' <small>confirmed, not picked up</small></h3>'
    +(bake.keys.length?bake.keys.map(function(k){return '<div class="li"><span>'+esc(k)+'</span><b class="n num">'+bake.by[k]+'</b></div>'}).join(''):'<p class="empty">Nothing left to hand out today.</p>')
-   +'<div class="foot"><button class="link" data-act="bake" data-d="'+tk+'">Full bake list for today</button></div></div>';
+   +'<div class="foot"><button class="link" data-act="bake" data-d="'+tk+'">Full bake list for '+(mode==='next'?fmtLong(d).split(',')[0]:'today')+'</button></div></div>';
 
   h+='<div class="panel"><h3>'+esc((lc.name||'Layer Card'))+' <small>rewards to give today</small></h3>'
    +(!lc.loaded?'<p class="empty">Loading cards</p>':rewardsToday.length?rewardsToday.map(function(o){var c=lc.byKey[lcKey(o.phone)],r=c.rewards.filter(function(x){return x.ready>0})[0];return '<div class="li"><div><b>'+esc(o.name)+'</b><small>'+fmtT(o.time)+' &middot; Layer '+r.at+': '+esc(r.text)+'</small></div><button class="btn" data-act="tdlayers" data-k="'+esc(c.key)+'">Open card</button></div>'}).join('')
@@ -230,3 +243,7 @@ histHtml=function(){
   var h=String(_histHtml20.apply(this,arguments));if(!lc.loaded&&!lc.loading)loadLayers();
   var i=h.indexOf('<h2>Regulars</h2>');return i>=0?h.slice(0,i)+coffeeHtml()+h.slice(i):h+coffeeHtml();
 };
+
+/* The 15-minute "is it ready?" prompt counts minutes in San Francisco time too, so it never asks
+   about the wrong day when the device clock is in another time zone. */
+minsUntil=function(o){var S=tdShop();if(o.date!==S.k)return o.date>S.k?1e6:-1e6;return tdMin(o.time)-S.min};

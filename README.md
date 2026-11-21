@@ -38,6 +38,11 @@ When a change is tested and approved here, it gets copied to the live system by 
 - **Phone:** tabs scroll sideways instead of pushing the page wider.
 - Fixes: counter items with a comma in the name ("Baklava, 2 pieces") are counted right;
   a screen whose data fails to load no longer retries in a loop.
+- **Runs on San Francisco time,** whatever the device clock says, so a demo from Jakarta
+  shows the right day. After 6 pm and on Sundays, Today switches to "Next up": the next
+  open day's pickups and bake list, with a one-line recap of today. Before 9:30 it shows
+  the day ahead without "late" warnings. The 15-minute "is it ready?" prompt also counts
+  in San Francisco time.
 - Files: `backend/Code.gs` (publish a New version), new `dashboard/z20.js`,
   `dashboard/z18.js`, `dashboard/index.html`.
 
